@@ -11,15 +11,30 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  auth-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: auth
+      POSTGRES_DB: auth
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata-auth:/var/lib/postgresql/data
+
   app:
     build: .
     restart: unless-stopped
     depends_on:
       - db
+      - auth-db
     ports:
       - '3000:3000'
     environment:
       DATABASE_URL: postgresql://nl2sql:nl2sql@db:5432/nl2sql?schema=public
+      AUTH_DATABASE_URL: postgresql://auth:auth@auth-db:5432/auth?schema=public
 
 volumes:
   pgdata:
+  pgdata-auth:

@@ -21,7 +21,10 @@
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "npx ts-node data/prisma/seed.ts",
     "db:studio": "npx prisma studio --port 5555",
-    "db:reset": "npx prisma migrate reset"
+    "db:reset": "npx prisma migrate reset",
+    "auth:migrate": "npx prisma migrate dev --config prisma-auth.config.ts",
+    "auth:studio": "npx prisma studio --port 5556 --config prisma-auth.config.ts",
+    "auth:reset": "npx prisma migrate reset --config prisma-auth.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
