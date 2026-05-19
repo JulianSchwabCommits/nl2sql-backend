@@ -1,8 +1,8 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { WsException } from '@nestjs/websockets';
-import { Socket } from 'socket.io';
+import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { ConfigService } from "@nestjs/config";
+import { WsException } from "@nestjs/websockets";
+import { Socket } from "socket.io";
 
 @Injectable()
 export class WsAuthGuard implements CanActivate {
@@ -17,18 +17,17 @@ export class WsAuthGuard implements CanActivate {
 
     if (!token) {
       client.disconnect();
-      throw new WsException('No token provided');
+      throw new WsException("No token provided");
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret: this.config.getOrThrow<string>('JWT_SECRET'),
-      });
+      const secret = this.config.getOrThrow<string>("JWT_SECRET");
+      const payload = await this.jwtService.verifyAsync(token, { secret });
       client.data.user = payload;
     } catch (error: any) {
       client.disconnect();
       throw new WsException(
-        error.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token',
+        error.name === "TokenExpiredError" ? "Token expired" : "Invalid token",
       );
     }
 
@@ -38,7 +37,7 @@ export class WsAuthGuard implements CanActivate {
   private extractToken(client: Socket): string | undefined {
     const auth =
       client.handshake.auth?.token ||
-      client.handshake.headers?.authorization?.replace('Bearer ', '');
+      client.handshake.headers?.authorization?.replace("Bearer ", "");
     return auth || undefined;
   }
 }

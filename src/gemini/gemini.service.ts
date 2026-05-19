@@ -1,10 +1,15 @@
-import { Injectable } from "@nestjs/common";
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from "@nestjs/common";
 
 @Injectable()
 export class GeminiService {
+  private readonly logger = new Logger(GeminiService.name);
   private readonly apiKey = process.env.GEMINI_API_KEY;
   private readonly baseUrl =
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
 
   async chat(message: string): Promise<string> {
     const response = await fetch(`${this.baseUrl}?key=${this.apiKey}`, {
