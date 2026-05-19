@@ -1,12 +1,20 @@
-import { Controller, Get } from '@nestjs/common';
-import { AgentService } from './agent.service';
+import { Controller, Post, Body, UseGuards } from "@nestjs/common";
+import { AgentService } from "./agent.service";
+import { AuthGuard } from "../auth/guards/auth.guard";
 
-@Controller()
+class ChatDto {
+  prompt: string;
+}
+
+@UseGuards(AuthGuard)
+@Controller("agent")
 export class AgentController {
   constructor(private readonly agentService: AgentService) {}
 
-  @Get('hi')
-  async hi(): Promise<string> {
-    return this.agentService.handleMessage('hi');
+  // HTTP convenience endpoint — primary communication should use the WS gateway (agent:chat)
+  @Post("chat")
+  async chat(@Body() dto: ChatDto): Promise<{ reply: string }> {
+    const reply = await this.agentService.handleMessage(dto.prompt);
+    return { reply };
   }
 }

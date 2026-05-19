@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, NestModule, MiddlewareConsumer } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD } from "@nestjs/core";
@@ -8,6 +8,7 @@ import { DatabaseModule } from "./database";
 import { AuthDatabaseModule } from "./auth-database";
 import { AuthModule } from "./auth/auth.module";
 import { AgentModule } from "./agent/agent.module";
+import { LoggerMiddleware } from "./common/middleware/logger.middleware";
 
 const REQUIRED_ENV = [
   "DATABASE_URL",
@@ -56,4 +57,9 @@ const REQUIRED_ENV = [
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Apply request logger to all HTTP routes
+    consumer.apply(LoggerMiddleware).forRoutes("*");
+  }
+}
