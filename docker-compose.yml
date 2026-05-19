@@ -31,6 +31,7 @@ services:
       - auth-db
     ports:
       - '3000:3000'
+    env_file: .env
     environment:
       DATABASE_URL: postgresql://nl2sql:nl2sql@db:5432/nl2sql?schema=public
       AUTH_DATABASE_URL: postgresql://auth:auth@auth-db:5432/auth?schema=public

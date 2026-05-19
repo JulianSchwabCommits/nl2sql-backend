@@ -1,12 +1,57 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database';
 import { AuthDatabaseModule } from './auth-database';
+import { AuthModule } from './auth/auth.module';
+
+const REQUIRED_ENV = [
+  'DATABASE_URL',
+  'AUTH_DATABASE_URL',
+  'JWT_SECRET',
+  'JWT_REFRESH_SECRET',
+];
 
 @Module({
-  imports: [DatabaseModule, AuthDatabaseModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate: (config: Record<string, unknown>) => {
+        const missing = REQUIRED_ENV.filter((key) => !config[key]);
+        if (missing.length > 0) {
+          throw new Error(
+            `Missing required environment variables: ${missing.join(', ')}`,
+          );
+        }
+        return config;
+      },
+    }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 60000,
+        limit: 10,
+      },
+      {
+        name: 'long',
+        ttl: 600000,
+        limit: 100,
+      },
+    ]),
+    DatabaseModule,
+    AuthDatabaseModule,
+    AuthModule,
+  ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}
