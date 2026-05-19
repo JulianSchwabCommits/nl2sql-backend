@@ -6,3 +6,4 @@ dist
 data/*.json
 data/*.zip
 *.md
+*.tsbuildinfo

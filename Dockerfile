@@ -7,9 +7,9 @@ RUN npm ci
 
 COPY . .
 
-RUN npx prisma generate
+RUN npx prisma generate && npx prisma generate --config prisma-auth.config.ts
 
-RUN npm run build
+RUN rm -rf dist && npm run build
 
 EXPOSE 3000
 
