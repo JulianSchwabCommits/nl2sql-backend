@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -30,7 +31,7 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const token = this.extractTokenFromHeader(request);
     if (!token) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException('No token provided');
     }
 
     try {
@@ -38,8 +39,11 @@ export class AuthGuard implements CanActivate {
         secret: this.config.getOrThrow<string>('JWT_SECRET'),
       });
       request['user'] = payload;
-    } catch {
-      throw new UnauthorizedException();
+    } catch (error: any) {
+      if (error.name === 'TokenExpiredError') {
+        throw new ForbiddenException('Token expired');
+      }
+      throw new ForbiddenException('Invalid token');
     }
 
     return true;
