@@ -9,7 +9,14 @@ export class OpenAIService {
   private readonly apiKey = process.env.OPENAI_API_KEY;
   private readonly baseUrl = "https://api.openai.com/v1/chat/completions";
 
-  async chat(message: string): Promise<string> {
+  async chat(message: string, systemPrompt?: string): Promise<string> {
+    const messages: { role: string; content: string }[] = [];
+
+    if (systemPrompt) {
+      messages.push({ role: "system", content: systemPrompt });
+    }
+    messages.push({ role: "user", content: message });
+
     const response = await fetch(this.baseUrl, {
       method: "POST",
       headers: {
@@ -18,7 +25,7 @@ export class OpenAIService {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        messages: [{ role: "user", content: message }],
+        messages,
       }),
     });
 

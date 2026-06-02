@@ -18,7 +18,7 @@ import { io } from "socket.io-client";
 const BASE_URL = "http://localhost:3000";
 const EMAIL = "testuser@example.com";
 const PASSWORD = "Test1234!";
-const PROMPT = "Who is the president of the USA?";
+const PROMPT = "Please explain the database schema to me. What tables exist and how are they related?";
 
 // ── 1. Signup ──────────────────────────────────────────────────────────────
 async function signup() {
