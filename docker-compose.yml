@@ -11,6 +11,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  redisDB:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
   auth-db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -29,6 +35,7 @@ services:
     depends_on:
       - db
       - auth-db
+      - redisDB
     ports:
       - '3000:3000'
     env_file:
@@ -37,6 +44,7 @@ services:
       DATABASE_URL: postgresql://nl2sql:nl2sql@db:5432/nl2sql?schema=public
       AUTH_DATABASE_URL: postgresql://auth:auth@auth-db:5432/auth?schema=public
       CORS_ORIGIN: "http://localhost,http://localhost:5173"
+      REDIS_URL: redis://redisDB:6379
 
 volumes:
   pgdata:

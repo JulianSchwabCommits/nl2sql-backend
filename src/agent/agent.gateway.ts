@@ -11,12 +11,18 @@ import { UseGuards, Logger } from "@nestjs/common";
 import { Server, Socket } from "socket.io";
 import { AgentService } from "./agent.service";
 import { WsAuthGuard } from "../auth/guards/ws-auth.guard";
+import { RedisService } from "../redis/redis.service";
 
 // All agent communication goes over WebSocket (Socket.io) — auth remains HTTP only
 @WebSocketGateway({
   namespace: "agent",
   cors: {
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+    origin: (() => {
+      if (!process.env.CORS_ORIGIN) {
+        console.warn("Warning: CORS_ORIGIN environment variable is not set");
+      }
+      return process.env.CORS_ORIGIN;
+    })(),
     credentials: true,
   },
 })
@@ -26,7 +32,10 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(AgentGateway.name);
 
-  constructor(private readonly agentService: AgentService) {}
+  constructor(
+    private readonly agentService: AgentService,
+    private readonly redisService: RedisService,
+  ) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
@@ -49,7 +58,9 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      const reply = await this.agentService.handleMessage(data.prompt);
+      const history = await this.redisService.getHistory(client.data.user.sub);
+      const reply = await this.agentService.handleMessage(data.prompt, history);
+      await this.redisService.saveExchange(client.data.user.sub, data.prompt, reply);
       client.emit("agent:response", { reply });
     } catch (error: any) {
       this.logger.error(`Chat error: ${error.message}`, error.stack);

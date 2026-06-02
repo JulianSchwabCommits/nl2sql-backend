@@ -13,4 +13,7 @@ RUN rm -rf dist && npm run build
 
 EXPOSE 3000
 
-CMD ["node", "dist/main"]
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
+
+CMD ["sh", "entrypoint.sh"]
