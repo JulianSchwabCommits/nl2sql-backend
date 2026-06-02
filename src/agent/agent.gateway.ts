@@ -21,7 +21,7 @@ import { WsAuthGuard } from "../auth/guards/ws-auth.guard";
   },
 })
 export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  @WebSocketServer()s
+  @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(AgentGateway.name);
@@ -44,10 +44,18 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     if (!data?.prompt) {
-      return { event: "agent:error", data: { message: "prompt is required" } };
+      client.emit("agent:error", { message: "prompt is required" });
+      return;
     }
 
-    const reply = await this.agentService.handleMessage(data.prompt);
-    client.emit("agent:response", { reply });
+    try {
+      const reply = await this.agentService.handleMessage(data.prompt);
+      client.emit("agent:response", { reply });
+    } catch (error: any) {
+      this.logger.error(`Chat error: ${error.message}`, error.stack);
+      client.emit("agent:error", {
+        message: error.message || "An unexpected error occurred",
+      });
+    }
   }
 }
