@@ -1,20 +1,17 @@
-import { Controller, Post, Body, UseGuards } from "@nestjs/common";
+import { Controller, Post, Body, UseGuards, BadRequestException } from "@nestjs/common";
 import { AgentService } from "./agent.service";
 import { AuthGuard } from "../auth/guards/auth.guard";
-
-class ChatDto {
-  prompt: string;
-}
 
 @UseGuards(AuthGuard)
 @Controller("agent")
 export class AgentController {
   constructor(private readonly agentService: AgentService) {}
 
-  // HTTP convenience endpoint — primary communication should use the WS gateway (agent:chat)
+  // HTTP endpoint disabled — use WebSocket (agent:chat) instead
   @Post("chat")
-  async chat(@Body() dto: ChatDto): Promise<{ reply: string }> {
-    const reply = await this.agentService.handleMessage(dto.prompt);
-    return { reply };
+  async chat(): Promise<never> {
+    throw new BadRequestException(
+      "HTTP chat endpoint is not supported. Please use WebSocket communication via /agent namespace with agent:chat event.",
+    );
   }
 }
