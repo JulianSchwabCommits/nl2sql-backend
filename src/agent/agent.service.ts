@@ -182,7 +182,6 @@ export class AgentService {
     const record = this.requestCounts.get(userId);
 
     if (!record || now > record.resetAt) {
-      // New day or first request
       this.requestCounts.set(userId, {
         count: 1,
         resetAt: now + 24 * 60 * 60 * 1000,

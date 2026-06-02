@@ -219,7 +219,10 @@ export class OpenAIService implements OnModuleInit {
   }
 
   // Simple chat for backwards compatibility
-  async chat(message: string): Promise<string> {
+  async chat(message: string, systemPrompt?: string): Promise<string> {
+    if (systemPrompt) {
+      this.systemPrompt = systemPrompt;
+    }
     const result = await this.chatWithTools([
       { role: "user", content: message },
     ]);
