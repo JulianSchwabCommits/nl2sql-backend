@@ -5,8 +5,98 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { SchemaLoaderService } from "../utils/schema-loader.service";
+import { ChatMessage } from "../agent/agent.service";
 import * as fs from "fs";
 import * as path from "path";
+
+// Gemini function calling tool definitions
+const TOOLS = [
+  {
+    function_declarations: [
+      {
+        name: "get",
+        description:
+          "Execute a SELECT SQL query on the PostgreSQL database and return the results. Maximum 25 rows are returned.",
+        parameters: {
+          type: "object",
+          properties: {
+            sql: {
+              type: "string",
+              description: "A valid PostgreSQL SELECT query",
+            },
+          },
+          required: ["sql"],
+        },
+      },
+      {
+        name: "create",
+        description:
+          "Execute an INSERT SQL query on the PostgreSQL database to create new records.",
+        parameters: {
+          type: "object",
+          properties: {
+            sql: {
+              type: "string",
+              description: "A valid PostgreSQL INSERT query",
+            },
+          },
+          required: ["sql"],
+        },
+      },
+      {
+        name: "update",
+        description:
+          "Execute an UPDATE SQL query on the PostgreSQL database to modify existing records.",
+        parameters: {
+          type: "object",
+          properties: {
+            sql: {
+              type: "string",
+              description: "A valid PostgreSQL UPDATE query",
+            },
+          },
+          required: ["sql"],
+        },
+      },
+      {
+        name: "delete",
+        description:
+          "Execute a DELETE SQL query on the PostgreSQL database to remove records.",
+        parameters: {
+          type: "object",
+          properties: {
+            sql: {
+              type: "string",
+              description: "A valid PostgreSQL DELETE query",
+            },
+          },
+          required: ["sql"],
+        },
+      },
+      {
+        name: "stop",
+        description:
+          "Stop the tool loop and return a final message to the user. Use this when you have the answer ready or need to communicate something without executing more queries.",
+        parameters: {
+          type: "object",
+          properties: {
+            message: {
+              type: "string",
+              description:
+                "The final response message to show to the user. Include the SQL query you used and a summary of the results.",
+            },
+          },
+          required: ["message"],
+        },
+      },
+    ],
+  },
+];
+
+interface GeminiResponse {
+  text?: string;
+  functionCall?: { name: string; args: Record<string, string> };
+}
 
 @Injectable()
 export class GeminiService implements OnModuleInit {
@@ -20,12 +110,9 @@ export class GeminiService implements OnModuleInit {
 
   onModuleInit() {
     if (!this.apiKey) {
-      this.logger.warn(
-        "GEMINI_API_KEY is not set — LLM calls will fail",
-      );
+      this.logger.warn("GEMINI_API_KEY is not set — LLM calls will fail");
     }
 
-    // Load system prompt template and inject schema
     try {
       const templatePath = path.join(
         process.cwd(),
@@ -42,12 +129,15 @@ export class GeminiService implements OnModuleInit {
     }
   }
 
-  async chat(message: string): Promise<string> {
+  async chatWithTools(messages: ChatMessage[]): Promise<GeminiResponse> {
     if (!this.apiKey) {
       throw new InternalServerErrorException(
         "GEMINI_API_KEY is not configured on the server",
       );
     }
+
+    // Convert our message format to Gemini's format
+    const contents = this.buildContents(messages);
 
     try {
       const response = await fetch(`${this.baseUrl}?key=${this.apiKey}`, {
@@ -57,7 +147,13 @@ export class GeminiService implements OnModuleInit {
           system_instruction: {
             parts: [{ text: this.systemPrompt }],
           },
-          contents: [{ role: "user", parts: [{ text: message }] }],
+          contents,
+          tools: TOOLS,
+          tool_config: {
+            function_calling_config: {
+              mode: "AUTO",
+            },
+          },
         }),
       });
 
@@ -80,17 +176,30 @@ export class GeminiService implements OnModuleInit {
         );
       }
 
-      const text =
-        data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (!text) {
+      const candidate = data.candidates?.[0];
+      if (!candidate?.content?.parts?.length) {
         this.logger.warn(`Empty Gemini response: ${JSON.stringify(data)}`);
         throw new InternalServerErrorException(
           "LLM returned an empty response",
         );
       }
 
-      return text;
+      // Check if model wants to call a function
+      const parts = candidate.content.parts;
+      const functionCallPart = parts.find((p: any) => p.functionCall);
+
+      if (functionCallPart) {
+        return {
+          functionCall: {
+            name: functionCallPart.functionCall.name,
+            args: functionCallPart.functionCall.args || {},
+          },
+        };
+      }
+
+      // Otherwise return text
+      const textPart = parts.find((p: any) => p.text);
+      return { text: textPart?.text || "" };
     } catch (error: any) {
       if (error instanceof InternalServerErrorException) {
         throw error;
@@ -100,5 +209,59 @@ export class GeminiService implements OnModuleInit {
         `Failed to reach LLM service: ${error.message}`,
       );
     }
+  }
+
+  // Keep the simple chat method for backwards compatibility
+  async chat(message: string): Promise<string> {
+    const result = await this.chatWithTools([
+      { role: "user", content: message },
+    ]);
+    return result.text || "No response";
+  }
+
+  private buildContents(messages: ChatMessage[]): any[] {
+    const contents: any[] = [];
+
+    for (const msg of messages) {
+      if (msg.role === "user") {
+        contents.push({
+          role: "user",
+          parts: [{ text: msg.content }],
+        });
+      } else if (msg.role === "model") {
+        if (msg.functionCall) {
+          contents.push({
+            role: "model",
+            parts: [
+              {
+                functionCall: {
+                  name: msg.functionCall.name,
+                  args: msg.functionCall.args,
+                },
+              },
+            ],
+          });
+        } else {
+          contents.push({
+            role: "model",
+            parts: [{ text: msg.content }],
+          });
+        }
+      } else if (msg.role === "function") {
+        contents.push({
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: msg.functionResponse?.name || "unknown",
+                response: JSON.parse(msg.content),
+              },
+            },
+          ],
+        });
+      }
+    }
+
+    return contents;
   }
 }

@@ -36,11 +36,11 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  // expects { prompt: string }, responds with llm reply
+  // expects { prompt: string, history?: ChatMessage[], _conversationId?: string }, responds with AgentResponse
   @UseGuards(WsAuthGuard)
   @SubscribeMessage("agent:chat")
   async handleChat(
-    @MessageBody() data: { prompt: string },
+    @MessageBody() data: { prompt: string; history?: any[]; _conversationId?: string },
     @ConnectedSocket() client: Socket,
   ) {
     if (!data?.prompt) {
@@ -49,12 +49,18 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      const reply = await this.agentService.handleMessage(data.prompt);
-      client.emit("agent:response", { reply });
+      const userId = (client as any).user?.sub || client.id;
+      const result = await this.agentService.handleMessage(
+        data.prompt,
+        data.history || [],
+        userId,
+      );
+      client.emit("agent:response", { ...result, _conversationId: data._conversationId });
     } catch (error: any) {
       this.logger.error(`Chat error: ${error.message}`, error.stack);
       client.emit("agent:error", {
         message: error.message || "An unexpected error occurred",
+        _conversationId: data._conversationId,
       });
     }
   }
