@@ -5,11 +5,12 @@ import { AgentGateway } from "./agent.gateway";
 import { OpenAIModule } from "../openai/openai.module";
 import { AuthModule } from "../auth/auth.module";
 import { WsAuthGuard } from "../auth/guards/ws-auth.guard";
-import { RedisModule } from "../redis/redis.module";
+import { SchemaLoaderService } from "../utils/schema-loader.service";
+import { DatabaseModule } from "../database/database.module";
 
 @Module({
-  imports: [OpenAIModule, AuthModule, RedisModule],
+  imports: [OpenAIModule, AuthModule, DatabaseModule],
   controllers: [AgentController],
-  providers: [AgentService, AgentGateway, WsAuthGuard],
+  providers: [AgentService, AgentGateway, WsAuthGuard, SchemaLoaderService],
 })
 export class AgentModule {}
