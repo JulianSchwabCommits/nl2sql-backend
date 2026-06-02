@@ -1,11 +1,11 @@
 import { Injectable } from "@nestjs/common";
-import { GeminiService } from "../gemini/gemini.service";
+import { OpenAIService } from "../openai/openai.service";
 
 @Injectable()
 export class AgentService {
-  constructor(private readonly geminiService: GeminiService) {}
+  constructor(private readonly openAIService: OpenAIService) {}
 
   async handleMessage(message: string): Promise<string> {
-    return this.geminiService.chat(message);
+    return this.openAIService.chat(message);
   }
 }
