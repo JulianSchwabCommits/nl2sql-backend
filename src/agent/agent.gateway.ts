@@ -64,6 +64,12 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { prompt, conversationId } = data;
 
     try {
+      // Ensure conversation exists (create if not)
+      let conv = await this.redisService.getConversation(userId, conversationId);
+      if (!conv) {
+        conv = await this.redisService.createConversation(userId, conversationId, "New Chat");
+      }
+
       // Save user message to Redis
       const userMessage = {
         id: crypto.randomUUID(),
@@ -74,14 +80,14 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
       await this.redisService.addMessage(userId, conversationId, userMessage);
 
       // Auto-title conversation from first message
-      const conv = await this.redisService.getConversation(userId, conversationId);
-      if (conv && conv.title === "New Chat" && conv.messages.length <= 1) {
+      if (conv.title === "New Chat" && conv.messages.length === 0) {
         const title = prompt.slice(0, 40) + (prompt.length > 40 ? "..." : "");
         await this.redisService.updateConversationTitle(userId, conversationId, title);
       }
 
       // Get history for context
-      const history = await this.redisService.getConversationHistory(userId, conversationId);
+      const exchangeHistory = await this.redisService.getConversationHistory(userId, conversationId);
+      const history = this.convertExchangesToMessages(exchangeHistory);
       const result = await this.agentService.handleMessage(prompt, history, userId.toString());
 
       // Save assistant message to Redis
@@ -101,5 +107,14 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
         conversationId: data.conversationId,
       });
     }
+  }
+
+  private convertExchangesToMessages(exchanges: any[]): any[] {
+    const messages: any[] = [];
+    for (const exchange of exchanges) {
+      messages.push({ role: "user", content: exchange.prompt });
+      messages.push({ role: "model", content: exchange.reply });
+    }
+    return messages;
   }
 }
