@@ -20,6 +20,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "npx ts-node data/prisma/seed.ts",
+    "db:setup": "bash scripts/setup-food-database.sh",
     "db:studio": "npx prisma studio --port 5555",
     "db:reset": "npx prisma migrate reset",
     "auth:migrate": "npx prisma migrate dev --config prisma-auth.config.ts",
