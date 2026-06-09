@@ -11,7 +11,7 @@ async function main() {
   // Check if database is already seeded
   const existingFoodCount = await prisma.food.count();
   if (existingFoodCount > 0) {
-    console.log(`✅ Database already seeded (${existingFoodCount} foods found). Skipping...`);
+    console.log(`Database already seeded (${existingFoodCount} foods found). Skipping...`);
     return;
   }
 
