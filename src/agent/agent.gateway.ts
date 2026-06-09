@@ -45,11 +45,11 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  // expects { prompt: string }, responds with llm reply
+  // expects { prompt: string, history?: ChatMessage[], _conversationId?: string }, responds with AgentResponse
   @UseGuards(WsAuthGuard)
   @SubscribeMessage("agent:chat")
   async handleChat(
-    @MessageBody() data: { prompt: string },
+    @MessageBody() data: { prompt: string; history?: any[]; _conversationId?: string },
     @ConnectedSocket() client: Socket,
   ) {
     if (!data?.prompt) {
@@ -58,15 +58,37 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      const history = await this.redisService.getHistory(client.data.user.sub);
-      const reply = await this.agentService.handleMessage(data.prompt, history);
-      await this.redisService.saveExchange(client.data.user.sub, data.prompt, reply);
-      client.emit("agent:response", { reply });
+      const userId = client.data.user.sub;
+      
+      // Get history from Redis or use provided history
+      const redisHistory = await this.redisService.getHistory(userId);
+      const history = data.history || this.convertRedisHistoryToChatMessages(redisHistory);
+      
+      const result = await this.agentService.handleMessage(
+        data.prompt,
+        history,
+        userId,
+      );
+      
+      // Save to Redis
+      await this.redisService.saveExchange(userId, data.prompt, result.reply);
+      
+      client.emit("agent:response", { ...result, _conversationId: data._conversationId });
     } catch (error: any) {
       this.logger.error(`Chat error: ${error.message}`, error.stack);
       client.emit("agent:error", {
         message: error.message || "An unexpected error occurred",
+        _conversationId: data._conversationId,
       });
     }
+  }
+
+  private convertRedisHistoryToChatMessages(history: any[]): any[] {
+    const messages: any[] = [];
+    for (const exchange of history) {
+      messages.push({ role: "user", content: exchange.prompt });
+      messages.push({ role: "model", content: exchange.reply });
+    }
+    return messages;
   }
 }
