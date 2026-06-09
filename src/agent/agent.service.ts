@@ -36,16 +36,34 @@ export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   // Simple in-memory rate limit (resets on restart)
   private readonly requestCounts = new Map<string, { count: number; resetAt: number }>();
+  // Track active requests per client so they can be cancelled
+  private readonly activeRequests = new Map<string, AbortController>();
 
   constructor(
     private readonly openAIService: OpenAIService,
     private readonly db: DatabaseService,
   ) {}
 
+  /**
+   * Cancel an active request for a given client.
+   * Returns true if a request was found and cancelled.
+   */
+  cancelRequest(clientId: string): boolean {
+    const controller = this.activeRequests.get(clientId);
+    if (controller) {
+      controller.abort();
+      this.activeRequests.delete(clientId);
+      this.logger.log(`Cancelled active request for client: ${clientId}`);
+      return true;
+    }
+    return false;
+  }
+
   async handleMessage(
     message: string,
     history: ChatMessage[] = [],
     userId?: string,
+    clientId?: string,
   ): Promise<AgentResponse> {
     // Rate limiting
     if (userId) {
@@ -59,6 +77,23 @@ export class AgentService {
       }
     }
 
+    // Set up cancellation for this request
+    const abortController = new AbortController();
+    const requestKey = clientId || userId || "anonymous";
+    this.activeRequests.set(requestKey, abortController);
+
+    try {
+      return await this.executeAgentLoop(message, history, abortController.signal);
+    } finally {
+      this.activeRequests.delete(requestKey);
+    }
+  }
+
+  private async executeAgentLoop(
+    message: string,
+    history: ChatMessage[],
+    signal: AbortSignal,
+  ): Promise<AgentResponse> {
     // Trim history to control token usage
     const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES);
 
@@ -73,7 +108,25 @@ export class AgentService {
     while (iterations < MAX_TOOL_ITERATIONS) {
       iterations++;
 
+      // Check if request was cancelled
+      if (signal.aborted) {
+        return {
+          reply: "Request was cancelled.",
+          queries,
+          error: "cancelled",
+        };
+      }
+
       const response = await this.openAIService.chatWithTools(conversation);
+
+      // Check again after awaiting
+      if (signal.aborted) {
+        return {
+          reply: "Request was cancelled.",
+          queries,
+          error: "cancelled",
+        };
+      }
 
       if (!response.functionCall) {
         return {

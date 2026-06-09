@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -28,18 +29,19 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    const user = await this.db.user.create({
+    await this.db.user.create({
       data: {
         email: dto.email,
         password: hashedPassword,
         name: dto.name,
+        approved: false,
       },
     });
 
-    const tokens = await this.generateTokens(user.id, user.email);
-    await this.storeRefreshToken(user.id, tokens.refreshToken);
-
-    return tokens;
+    return {
+      message:
+        'Registration successful. Your account is pending approval by an administrator.',
+    };
   }
 
   async login(dto: LoginDto) {
@@ -57,6 +59,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (!user.approved) {
+      throw new ForbiddenException(
+        'Your account is pending approval. Please wait for admin confirmation.',
+      );
+    }
+
     const tokens = await this.generateTokens(user.id, user.email);
     await this.storeRefreshToken(user.id, tokens.refreshToken);
 
@@ -70,6 +78,10 @@ export class AuthService {
 
     if (!user || !user.refreshToken) {
       throw new UnauthorizedException('Access denied');
+    }
+
+    if (!user.approved) {
+      throw new ForbiddenException('Account not approved');
     }
 
     const tokenValid = await bcrypt.compare(refreshToken, user.refreshToken);
@@ -94,7 +106,14 @@ export class AuthService {
   async getProfile(userId: number) {
     return this.db.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        approved: true,
+        createdAt: true,
+      },
     });
   }
 

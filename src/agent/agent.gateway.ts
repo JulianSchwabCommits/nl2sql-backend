@@ -54,7 +54,13 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
         data.prompt,
         data.history || [],
         userId,
+        client.id,
       );
+      // Don't emit response if the request was cancelled
+      if (result.error === "cancelled") {
+        client.emit("agent:cancelled", { _conversationId: data._conversationId });
+        return;
+      }
       client.emit("agent:response", { ...result, _conversationId: data._conversationId });
     } catch (error: any) {
       this.logger.error(`Chat error: ${error.message}`, error.stack);
@@ -63,5 +69,14 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
         _conversationId: data._conversationId,
       });
     }
+  }
+
+  @UseGuards(WsAuthGuard)
+  @SubscribeMessage("agent:cancel")
+  handleCancel(
+    @ConnectedSocket() client: Socket,
+  ) {
+    const cancelled = this.agentService.cancelRequest(client.id);
+    this.logger.log(`Cancel request from ${client.id}: ${cancelled ? "success" : "no active request"}`);
   }
 }

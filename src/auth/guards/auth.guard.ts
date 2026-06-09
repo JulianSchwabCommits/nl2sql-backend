@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { AuthDatabaseService } from '../../auth-database';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -17,6 +18,7 @@ export class AuthGuard implements CanActivate {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly reflector: Reflector,
+    private readonly db: AuthDatabaseService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -39,7 +41,20 @@ export class AuthGuard implements CanActivate {
         secret: this.config.getOrThrow<string>('JWT_SECRET'),
       });
       request['user'] = payload;
+
+      // Check if user is still approved
+      const user = await this.db.user.findUnique({
+        where: { id: payload.sub },
+        select: { approved: true },
+      });
+
+      if (!user || !user.approved) {
+        throw new ForbiddenException('Account not approved');
+      }
     } catch (error: any) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
       if (error.name === 'TokenExpiredError') {
         throw new ForbiddenException('Token expired');
       }

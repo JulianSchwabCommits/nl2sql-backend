@@ -8,6 +8,7 @@ import { DatabaseModule } from "./database";
 import { AuthDatabaseModule } from "./auth-database";
 import { AuthModule } from "./auth/auth.module";
 import { AgentModule } from "./agent/agent.module";
+import { AdminModule } from "./admin";
 import { LoggerMiddleware } from "./common/middleware/logger.middleware";
 
 const REQUIRED_ENV = [
@@ -47,6 +48,7 @@ const REQUIRED_ENV = [
     AuthDatabaseModule,
     AuthModule,
     AgentModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [

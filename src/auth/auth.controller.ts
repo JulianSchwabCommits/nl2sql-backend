@@ -27,10 +27,8 @@ export class AuthController {
 
   @Public()
   @Post('signup')
-  async signup(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: any) {
-    const tokens = await this.authService.signup(dto);
-    this.setRefreshCookie(res, tokens.refreshToken);
-    return { accessToken: tokens.accessToken };
+  async signup(@Body() dto: RegisterDto) {
+    return this.authService.signup(dto);
   }
 
   @Public()
