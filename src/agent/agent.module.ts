@@ -6,9 +6,10 @@ import { OpenAIModule } from "../openai/openai.module";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { WsAuthGuard } from "../auth/guards/ws-auth.guard";
+import { RedisModule } from "../redis/redis.module";
 
 @Module({
-  imports: [OpenAIModule, DatabaseModule, AuthModule],
+  imports: [OpenAIModule, DatabaseModule, AuthModule, RedisModule],
   controllers: [AgentController],
   providers: [AgentService, AgentGateway, WsAuthGuard],
 })

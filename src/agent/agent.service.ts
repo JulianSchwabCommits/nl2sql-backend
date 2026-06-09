@@ -177,6 +177,7 @@ export class AgentService {
     };
   }
 
+<<<<<<< Updated upstream
   private checkRateLimit(userId: string): boolean {
     const now = Date.now();
     const record = this.requestCounts.get(userId);
@@ -191,11 +192,6 @@ export class AgentService {
 
     if (record.count >= MAX_REQUESTS_PER_DAY) {
       return false;
-    }
-
-    record.count++;
-    return true;
-  }
     }
 
     record.count++;

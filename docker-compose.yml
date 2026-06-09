@@ -16,6 +16,9 @@ services:
     restart: unless-stopped
     ports:
       - '6379:6379'
+    volumes:
+      - redisdata:/data
+    command: redis-server --appendonly yes
 
   auth-db:
     image: postgres:16-alpine
@@ -51,3 +54,4 @@ services:
 volumes:
   pgdata:
   pgdata-auth:
+  redisdata:

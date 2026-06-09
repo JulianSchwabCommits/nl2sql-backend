@@ -13,7 +13,6 @@ import { AgentService } from "./agent.service";
 import { WsAuthGuard } from "../auth/guards/ws-auth.guard";
 import { RedisService } from "../redis/redis.service";
 
-// All agent communication goes over WebSocket (Socket.io) — auth remains HTTP only
 @WebSocketGateway({
   namespace: "agent",
   cors: {
@@ -45,50 +44,62 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  // expects { prompt: string, history?: ChatMessage[], _conversationId?: string }, responds with AgentResponse
+  // expects { prompt: string, conversationId: string }, responds with AgentResponse
   @UseGuards(WsAuthGuard)
   @SubscribeMessage("agent:chat")
   async handleChat(
-    @MessageBody() data: { prompt: string; history?: any[]; _conversationId?: string },
+    @MessageBody() data: { prompt: string; conversationId: string },
     @ConnectedSocket() client: Socket,
   ) {
     if (!data?.prompt) {
       client.emit("agent:error", { message: "prompt is required" });
       return;
     }
+    if (!data?.conversationId) {
+      client.emit("agent:error", { message: "conversationId is required" });
+      return;
+    }
+
+    const userId = client.data.user.sub;
+    const { prompt, conversationId } = data;
 
     try {
-      const userId = client.data.user.sub;
-      
-      // Get history from Redis or use provided history
-      const redisHistory = await this.redisService.getHistory(userId);
-      const history = data.history || this.convertRedisHistoryToChatMessages(redisHistory);
-      
-      const result = await this.agentService.handleMessage(
-        data.prompt,
-        history,
-        userId,
-      );
-      
-      // Save to Redis
-      await this.redisService.saveExchange(userId, data.prompt, result.reply);
-      
-      client.emit("agent:response", { ...result, _conversationId: data._conversationId });
+      // Save user message to Redis
+      const userMessage = {
+        id: crypto.randomUUID(),
+        role: "user" as const,
+        content: prompt,
+        timestamp: new Date().toISOString(),
+      };
+      await this.redisService.addMessage(userId, conversationId, userMessage);
+
+      // Auto-title conversation from first message
+      const conv = await this.redisService.getConversation(userId, conversationId);
+      if (conv && conv.title === "New Chat" && conv.messages.length <= 1) {
+        const title = prompt.slice(0, 40) + (prompt.length > 40 ? "..." : "");
+        await this.redisService.updateConversationTitle(userId, conversationId, title);
+      }
+
+      // Get history for context
+      const history = await this.redisService.getConversationHistory(userId, conversationId);
+      const result = await this.agentService.handleMessage(prompt, history, userId.toString());
+
+      // Save assistant message to Redis
+      const assistantMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant" as const,
+        content: result.reply,
+        timestamp: new Date().toISOString(),
+      };
+      await this.redisService.addMessage(userId, conversationId, assistantMessage);
+
+      client.emit("agent:response", { ...result, conversationId });
     } catch (error: any) {
       this.logger.error(`Chat error: ${error.message}`, error.stack);
       client.emit("agent:error", {
         message: error.message || "An unexpected error occurred",
-        _conversationId: data._conversationId,
+        conversationId: data.conversationId,
       });
     }
-  }
-
-  private convertRedisHistoryToChatMessages(history: any[]): any[] {
-    const messages: any[] = [];
-    for (const exchange of history) {
-      messages.push({ role: "user", content: exchange.prompt });
-      messages.push({ role: "model", content: exchange.reply });
-    }
-    return messages;
   }
 }
