@@ -8,6 +8,13 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  // Check if database is already seeded
+  const existingFoodCount = await prisma.food.count();
+  if (existingFoodCount > 0) {
+    console.log(`Database already seeded (${existingFoodCount} foods found). Skipping...`);
+    return;
+  }
+
   const filePath = path.join(
     __dirname,
     '../FoodData_Central_foundation_food_json_2026-04-30.json',

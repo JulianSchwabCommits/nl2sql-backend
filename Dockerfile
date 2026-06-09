@@ -13,4 +13,8 @@ RUN rm -rf dist && npm run build
 
 EXPOSE 3000
 
-CMD ["node", "dist/main"]
+COPY entrypoint.sh ./entrypoint.sh
+COPY scripts/setup-food-database.sh ./scripts/setup-food-database.sh
+RUN chmod +x entrypoint.sh && chmod +x scripts/setup-food-database.sh
+
+CMD ["sh", "entrypoint.sh"]

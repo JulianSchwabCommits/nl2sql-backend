@@ -20,6 +20,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "npx ts-node data/prisma/seed.ts",
+    "db:setup": "bash scripts/setup-food-database.sh",
     "db:studio": "npx prisma studio --port 5555",
     "db:reset": "npx prisma migrate reset",
     "auth:migrate": "npx prisma migrate dev --config prisma-auth.config.ts",
@@ -46,7 +47,8 @@
     "nodemailer": "^8.0.10",
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "ioredis": "^5.6.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

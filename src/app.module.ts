@@ -16,6 +16,8 @@ const REQUIRED_ENV = [
   "AUTH_DATABASE_URL",
   "JWT_SECRET",
   "JWT_REFRESH_SECRET",
+  "REDIS_URL",
+  "OPENAI_API_KEY"
 ];
 
 @Module({

@@ -18,16 +18,26 @@ cp .env.example .env
 
 # Start all containers (app + databases)
 docker compose up --build -d
-
-# Run database migrations
-docker compose exec app npx prisma migrate deploy --schema=data/prisma/schema.prisma
-docker compose exec app npx prisma migrate deploy --config prisma-auth.config.ts
-
-# Seed main database (optional)
-docker compose exec app npx ts-node data/prisma/seed.ts
 ```
 
 The API is available at `http://localhost:3000`.
+
+**Note:** The database setup (download USDA food data + seed) happens automatically during container startup via `entrypoint.sh`. The setup script is idempotent - it only seeds if the database is empty.
+
+### Manual Database Setup
+
+If you need to manually setup the food database:
+
+```bash
+# Option 1: Run the automated setup script (downloads data if needed + seeds)
+docker compose exec app bash scripts/setup-food-database.sh
+
+# Option 2: Use npm script
+docker compose exec app npm run db:setup
+
+# Option 3: Manual steps
+docker compose exec app npx tsx data/prisma/seed.ts
+```
 
 ## Services
 
@@ -36,6 +46,21 @@ The API is available at `http://localhost:3000`.
 | app | 3000 | NestJS API |
 | db | 5432 | PostgreSQL (main data) |
 | auth-db | 5433 | PostgreSQL (auth data) |
+| redisDB | 6379 | Redis (conversations) |
+
+## Food Data
+
+The application uses **USDA FoodData Central Foundation Foods** dataset:
+- **Source:** https://fdc.nal.usda.gov/
+- **File:** `FoodData_Central_foundation_food_json_2026-04-30.json` (6.5MB)
+- **Contents:** ~363 foundation foods with detailed nutritional information
+- **Download:** Automated via `scripts/setup-food-database.sh`
+- **Schema:** Foods, Categories, Nutrients, Measure Units, Food Nutrients, Food Portions
+
+The setup script automatically:
+1. Downloads the dataset if not present
+2. Runs Prisma migrations
+3. Seeds the database (only if empty)
 
 ## Auth Endpoints
 
