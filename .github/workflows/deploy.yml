@@ -1,8 +1,8 @@
-name: Deploy to AWS ECS
+name: 3. Deploy to AWS ECS
 
 on:
   workflow_run:
-    workflows: ["Build & Push Docker Image"]
+    workflows: ["2. Build & Push Docker Image"]
     types: [completed]
     branches: [develop]
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
     name: Deploy to ECS
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Only run if build workflow succeeded or if manually triggered
+    # Only run if build workflow succeeded OR if manually triggered
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
     steps:
@@ -44,8 +44,8 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             TAG="${{ inputs.image-tag }}"
           else
-            # Get the short SHA from the build workflow
-            TAG=$(echo ${{ github.sha }} | cut -c1-7)
+            # Get the short SHA from the workflow run that triggered this
+            TAG=$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)
           fi
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "Deploying image tag: ${TAG}"
@@ -79,6 +79,7 @@ jobs:
           echo "Service: ${{ secrets.ECS_SERVICE_NAME }}"
           echo "Cluster: ${{ secrets.ECS_CLUSTER_NAME }}"
           echo "Image tag: ${{ steps.image-tag.outputs.tag }}"
+          echo "Branch: ${{ github.event.workflow_run.head_branch }}"
 
       - name: Get service status
         run: |

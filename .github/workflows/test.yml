@@ -1,8 +1,8 @@
-name: Run Tests
+name: 1. Run Tests
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
     paths:
       - 'src/**'
       - 'test/**'
@@ -11,7 +11,7 @@ on:
       - 'data/prisma/**'
       - '.github/workflows/test.yml'
   push:
-    branches: [develop]
+    branches: [develop, main]
     paths:
       - 'src/**'
       - 'test/**'
@@ -62,3 +62,8 @@ jobs:
           flags: backend
           name: backend-coverage
         continue-on-error: true
+
+      - name: Tests completed
+        run: |
+          echo "All tests passed successfully!"
+          echo "Next step: Build & Push Docker Image will start automatically"

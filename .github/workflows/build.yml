@@ -1,10 +1,10 @@
-name: Build & Push Docker Image
+name: 2. Build & Push Docker Image
 
 on:
   workflow_run:
-    workflows: ["Run Tests"]
+    workflows: ["1. Run Tests"]
     types: [completed]
-    branches: [develop]
+    branches: [develop, main]
   workflow_dispatch:
     inputs:
       tag:
@@ -21,7 +21,8 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop') || github.event_name == 'workflow_dispatch' }}
+    # Only run if tests passed OR if manually triggered
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
@@ -88,5 +89,7 @@ jobs:
 
       - name: Image digest
         run: |
-          echo "Image pushed with tags:"
+          echo "Image pushed successfully with tags:"
           echo "${{ steps.meta.outputs.tags }}"
+          echo "Short SHA: ${{ steps.vars.outputs.short-sha }}"
+          echo "Next step: Deploy to AWS ECS will start automatically"
