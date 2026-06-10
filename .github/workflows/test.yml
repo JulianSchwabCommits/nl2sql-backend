@@ -2,23 +2,23 @@ name: 1. Run Tests
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop]
     paths:
-      - 'src/**'
-      - 'test/**'
-      - 'package*.json'
-      - 'prisma*.config.ts'
-      - 'data/prisma/**'
-      - '.github/workflows/test.yml'
+      - "src/**"
+      - "test/**"
+      - "package*.json"
+      - "prisma*.config.ts"
+      - "data/prisma/**"
+      - ".github/workflows/test.yml"
   push:
     branches: [develop, main]
     paths:
-      - 'src/**'
-      - 'test/**'
-      - 'package*.json'
-      - 'prisma*.config.ts'
-      - 'data/prisma/**'
-      - '.github/workflows/test.yml'
+      - "src/**"
+      - "test/**"
+      - "package*.json"
+      - "prisma*.config.ts"
+      - "data/prisma/**"
+      - ".github/workflows/test.yml"
   workflow_dispatch:
 
 jobs:
@@ -34,8 +34,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci

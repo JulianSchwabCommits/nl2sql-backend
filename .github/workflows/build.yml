@@ -4,13 +4,13 @@ on:
   workflow_run:
     workflows: ["1. Run Tests"]
     types: [completed]
-    branches: [develop, main]
+    branches: [develop]
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Docker image tag'
+        description: "Docker image tag"
         required: false
-        default: 'latest'
+        default: "latest"
 
 permissions:
   id-token: write
@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 20
     # Only run if tests passed OR if manually triggered
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-    
+
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
       short-sha: ${{ steps.vars.outputs.short-sha }}
@@ -39,7 +39,7 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.event.workflow_run.head_sha || github.sha }} | cut -c1-7)
           echo "short-sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          
+
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG=${GITHUB_REF#refs/tags/}
             echo "tag=${TAG}" >> $GITHUB_OUTPUT

@@ -8,6 +8,8 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  const startTime = Date.now();
+  
   // Check if database is already seeded
   const existingFoodCount = await prisma.food.count();
   if (existingFoodCount > 0) {
@@ -19,11 +21,13 @@ async function main() {
     __dirname,
     '../FoodData_Central_foundation_food_json_2026-04-30.json',
   );
+  console.log('📖 Loading food data...');
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
   const foods = raw.FoundationFoods.filter((f: any) => f != null);
 
-  console.log(`Seeding ${foods.length} foods...`);
+  console.log(`🌱 Seeding ${foods.length} foods with batch operations...`);
 
+  // Collect all unique categories
   const categoryMap = new Map<string, { code?: string; description: string }>();
   for (const f of foods) {
     if (f.foodCategory?.description) {
@@ -37,15 +41,18 @@ async function main() {
     }
   }
 
-  for (const cat of categoryMap.values()) {
-    await prisma.foodCategory.upsert({
-      where: { description: cat.description },
-      update: {},
-      create: { code: cat.code, description: cat.description },
-    });
-  }
-  console.log(`Seeded ${categoryMap.size} categories`);
+  // Batch insert categories
+  await prisma.foodCategory.createMany({
+    data: Array.from(categoryMap.values()),
+    skipDuplicates: true,
+  });
+  console.log(`✅ Seeded ${categoryMap.size} categories`);
 
+  // Get category IDs for later use
+  const categories = await prisma.foodCategory.findMany();
+  const categoryIdMap = new Map(categories.map(c => [c.description, c.id]));
+
+  // Collect all unique nutrients
   const nutrientMap = new Map<number, any>();
   for (const f of foods) {
     for (const fn of f.foodNutrients || []) {
@@ -56,21 +63,20 @@ async function main() {
     }
   }
 
-  for (const n of nutrientMap.values()) {
-    await prisma.nutrient.upsert({
-      where: { id: n.id },
-      update: {},
-      create: {
-        id: n.id,
-        number: String(n.number),
-        name: n.name,
-        unitName: n.unitName,
-        rank: n.rank ?? null,
-      },
-    });
-  }
-  console.log(`Seeded ${nutrientMap.size} nutrients`);
+  // Batch insert nutrients
+  await prisma.nutrient.createMany({
+    data: Array.from(nutrientMap.values()).map(n => ({
+      id: n.id,
+      number: String(n.number),
+      name: n.name,
+      unitName: n.unitName,
+      rank: n.rank ?? null,
+    })),
+    skipDuplicates: true,
+  });
+  console.log(`✅ Seeded ${nutrientMap.size} nutrients`);
 
+  // Collect all unique measure units
   const unitMap = new Map<number, any>();
   for (const f of foods) {
     for (const p of f.foodPortions || []) {
@@ -81,135 +87,182 @@ async function main() {
     }
   }
 
-  for (const u of unitMap.values()) {
-    await prisma.measureUnit.upsert({
-      where: { id: u.id },
-      update: {},
-      create: {
+  // Batch insert measure units
+  if (unitMap.size > 0) {
+    await prisma.measureUnit.createMany({
+      data: Array.from(unitMap.values()).map(u => ({
         id: u.id,
         name: u.name,
         abbreviation: u.abbreviation,
-      },
+      })),
+      skipDuplicates: true,
     });
+    console.log(`✅ Seeded ${unitMap.size} measure units`);
   }
-  console.log(`Seeded ${unitMap.size} measure units`);
 
-  for (let i = 0; i < foods.length; i++) {
-    const f = foods[i];
+  // Batch insert foods
+  const foodData = foods.map((f: any) => ({
+    fdcId: f.fdcId,
+    description: f.description,
+    foodClass: f.foodClass ?? null,
+    dataType: f.dataType ?? null,
+    publicationDate: f.publicationDate ?? null,
+    ndbNumber: f.ndbNumber ?? null,
+    isHistoricalReference: f.isHistoricalReference ?? false,
+    categoryId: f.foodCategory?.description ? categoryIdMap.get(f.foodCategory.description) ?? null : null,
+  }));
 
-    let categoryId: number | null = null;
-    if (f.foodCategory?.description) {
-      const cat = await prisma.foodCategory.findUnique({
-        where: { description: f.foodCategory.description },
-      });
-      categoryId = cat?.id ?? null;
-    }
+  await prisma.food.createMany({
+    data: foodData,
+    skipDuplicates: true,
+  });
+  console.log(`✅ Seeded ${foods.length} foods`);
 
-    const food = await prisma.food.upsert({
-      where: { fdcId: f.fdcId },
-      update: {},
-      create: {
-        fdcId: f.fdcId,
-        description: f.description,
-        foodClass: f.foodClass ?? null,
-        dataType: f.dataType ?? null,
-        publicationDate: f.publicationDate ?? null,
-        ndbNumber: f.ndbNumber ?? null,
-        isHistoricalReference: f.isHistoricalReference ?? false,
-        categoryId,
-      },
-    });
+  // Get food IDs for relationships
+  const createdFoods = await prisma.food.findMany();
+  const foodIdMap = new Map(createdFoods.map(f => [f.fdcId, f.id]));
 
+  // Prepare batch data for related tables
+  const foodNutrients: any[] = [];
+  const foodPortions: any[] = [];
+  const inputFoods: any[] = [];
+  const nutrientConversionFactors: any[] = [];
+  const foodAttributes: any[] = [];
+
+  for (const f of foods) {
+    const foodId = foodIdMap.get(f.fdcId);
+    if (!foodId) continue;
+
+    // Collect food nutrients
     for (const fn of f.foodNutrients || []) {
       const deriv = fn.foodNutrientDerivation;
-      await prisma.foodNutrient.upsert({
-        where: { id: fn.id },
-        update: {},
-        create: {
-          id: fn.id,
-          foodId: food.id,
-          nutrientId: fn.nutrient.id,
-          amount: fn.amount ?? null,
-          median: fn.median ?? null,
-          min: fn.min ?? null,
-          max: fn.max ?? null,
-          dataPoints: fn.dataPoints ?? null,
-          derivationCode: deriv?.code ?? null,
-          derivationDescription: deriv?.description ?? null,
-          sourceCode: deriv?.foodNutrientSource?.code ?? null,
-          sourceDescription: deriv?.foodNutrientSource?.description ?? null,
-        },
+      foodNutrients.push({
+        id: fn.id,
+        foodId,
+        nutrientId: fn.nutrient.id,
+        amount: fn.amount ?? null,
+        median: fn.median ?? null,
+        min: fn.min ?? null,
+        max: fn.max ?? null,
+        dataPoints: fn.dataPoints ?? null,
+        derivationCode: deriv?.code ?? null,
+        derivationDescription: deriv?.description ?? null,
+        sourceCode: deriv?.foodNutrientSource?.code ?? null,
+        sourceDescription: deriv?.foodNutrientSource?.description ?? null,
       });
     }
 
+    // Collect food portions
     for (const p of f.foodPortions || []) {
-      await prisma.foodPortion.upsert({
-        where: { id: p.id },
-        update: {},
-        create: {
-          id: p.id,
-          foodId: food.id,
-          measureUnitId: p.measureUnit?.id ?? null,
-          amount: p.amount ?? null,
-          gramWeight: p.gramWeight ?? null,
-          modifier: p.modifier ?? null,
-          sequenceNumber: p.sequenceNumber ?? null,
-          minYearAcquired: p.minYearAcquired ?? null,
-        },
+      foodPortions.push({
+        id: p.id,
+        foodId,
+        measureUnitId: p.measureUnit?.id ?? null,
+        amount: p.amount ?? null,
+        gramWeight: p.gramWeight ?? null,
+        modifier: p.modifier ?? null,
+        sequenceNumber: p.sequenceNumber ?? null,
+        minYearAcquired: p.minYearAcquired ?? null,
       });
     }
 
+    // Collect input foods
     for (const inp of f.inputFoods || []) {
-      await prisma.inputFood.upsert({
-        where: { id: inp.id },
-        update: {},
-        create: {
-          id: inp.id,
-          foodId: food.id,
-          foodDescription: inp.foodDescription ?? null,
-          inputFoodFdcId: inp.inputFood?.fdcId ?? null,
-          inputFoodDesc: inp.inputFood?.description ?? null,
-          inputFoodCategory: inp.inputFood?.foodCategory?.description ?? null,
-        },
+      inputFoods.push({
+        id: inp.id,
+        foodId,
+        foodDescription: inp.foodDescription ?? null,
+        inputFoodFdcId: inp.inputFood?.fdcId ?? null,
+        inputFoodDesc: inp.inputFood?.description ?? null,
+        inputFoodCategory: inp.inputFood?.foodCategory?.description ?? null,
       });
     }
 
+    // Collect nutrient conversion factors
     for (const ncf of f.nutrientConversionFactors || []) {
-      await prisma.nutrientConversionFactor.create({
-        data: {
-          foodId: food.id,
-          type: ncf.type,
-          proteinValue: ncf.proteinValue ?? null,
-          fatValue: ncf.fatValue ?? null,
-          carbohydrateValue: ncf.carbohydrateValue ?? null,
-          value: ncf.value ?? null,
-        },
+      nutrientConversionFactors.push({
+        foodId,
+        type: ncf.type,
+        proteinValue: ncf.proteinValue ?? null,
+        fatValue: ncf.fatValue ?? null,
+        carbohydrateValue: ncf.carbohydrateValue ?? null,
+        value: ncf.value ?? null,
       });
     }
 
+    // Collect food attributes
     for (const attr of f.foodAttributes || []) {
-      await prisma.foodAttribute.create({
-        data: {
-          foodId: food.id,
-          name: attr.name ?? null,
-          value:
-            typeof attr.value === 'string'
-              ? attr.value
-              : (JSON.stringify(attr.value) ?? null),
-        },
+      foodAttributes.push({
+        foodId,
+        name: attr.name ?? null,
+        value: typeof attr.value === 'string' ? attr.value : (JSON.stringify(attr.value) ?? null),
       });
-    }
-
-    if ((i + 1) % 50 === 0) {
-      console.log(`  Seeded ${i + 1}/${foods.length} foods`);
     }
   }
 
-  console.log(`Done! Seeded ${foods.length} foods.`);
+  // Batch insert all related data
+  if (foodNutrients.length > 0) {
+    console.log(`📊 Seeding ${foodNutrients.length} food nutrients...`);
+    // Insert in chunks of 5000 to avoid memory issues
+    for (let i = 0; i < foodNutrients.length; i += 5000) {
+      await prisma.foodNutrient.createMany({
+        data: foodNutrients.slice(i, i + 5000),
+        skipDuplicates: true,
+      });
+      if (i + 5000 < foodNutrients.length) {
+        console.log(`  Progress: ${i + 5000}/${foodNutrients.length}`);
+      }
+    }
+    console.log(`✅ Seeded ${foodNutrients.length} food nutrients`);
+  }
+
+  if (foodPortions.length > 0) {
+    await prisma.foodPortion.createMany({
+      data: foodPortions,
+      skipDuplicates: true,
+    });
+    console.log(`✅ Seeded ${foodPortions.length} food portions`);
+  }
+
+  if (inputFoods.length > 0) {
+    await prisma.inputFood.createMany({
+      data: inputFoods,
+      skipDuplicates: true,
+    });
+    console.log(`✅ Seeded ${inputFoods.length} input foods`);
+  }
+
+  if (nutrientConversionFactors.length > 0) {
+    await prisma.nutrientConversionFactor.createMany({
+      data: nutrientConversionFactors,
+      skipDuplicates: true,
+    });
+    console.log(`✅ Seeded ${nutrientConversionFactors.length} nutrient conversion factors`);
+  }
+
+  if (foodAttributes.length > 0) {
+    await prisma.foodAttribute.createMany({
+      data: foodAttributes,
+      skipDuplicates: true,
+    });
+    console.log(`✅ Seeded ${foodAttributes.length} food attributes`);
+  }
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(`\n🎉 SUCCESS! Database seeding completed in ${elapsed} seconds`);
+  console.log(`📈 Summary:`);
+  console.log(`   - ${categoryMap.size} categories`);
+  console.log(`   - ${nutrientMap.size} nutrients`);
+  console.log(`   - ${unitMap.size} measure units`);
+  console.log(`   - ${foods.length} foods`);
+  console.log(`   - ${foodNutrients.length} food-nutrient relationships`);
+  console.log(`   - ${foodPortions.length} food portions`);
+  console.log(`\n✨ Your production database is ready!`);
 }
 
 main()
   .catch((e) => {
+    console.error('❌ SEEDING FAILED:');
     console.error(e);
     process.exit(1);
   })
