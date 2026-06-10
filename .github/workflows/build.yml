@@ -21,8 +21,7 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Only run if test workflow succeeded or if manually triggered
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop') || github.event_name == 'workflow_dispatch' }}
     
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
@@ -31,11 +30,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up variables
         id: vars
         run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          SHORT_SHA=$(echo ${{ github.event.workflow_run.head_sha || github.sha }} | cut -c1-7)
           echo "short-sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
           
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
