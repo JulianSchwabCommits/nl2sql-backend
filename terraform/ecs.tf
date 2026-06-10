@@ -138,11 +138,11 @@ resource "aws_ecs_task_definition" "backend" {
         },
         {
           name  = "DATABASE_URL"
-          value = "postgresql://${var.db_master_username}:${var.db_master_password}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/nl2sql?schema=public&sslmode=require&sslaccept=accept_invalid_certs"
+          value = "postgresql://${var.db_master_username}:${var.db_master_password}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/nl2sql?schema=public"
         },
         {
           name  = "AUTH_DATABASE_URL"
-          value = "postgresql://${var.db_master_username}:${var.db_master_password}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/auth?schema=public&sslmode=require&sslaccept=accept_invalid_certs"
+          value = "postgresql://${var.db_master_username}:${var.db_master_password}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/auth?schema=public"
         },
         {
           name  = "REDIS_URL"

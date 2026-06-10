@@ -28,6 +28,11 @@ resource "aws_db_parameter_group" "postgres" {
     value = "1"
   }
 
+  parameter {
+    name  = "rds.force_ssl"
+    value = "0"
+  }
+
   tags = {
     Name = "${var.project_name}-${var.environment}-postgres-params"
   }
