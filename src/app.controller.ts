@@ -11,4 +11,13 @@ export class AppController {
   ItsRunning(): string {
     return this.appService.ItsRunning();
   }
+
+  @Public()
+  @Get('health')
+  health(): { status: string; timestamp: string } {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
