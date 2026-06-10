@@ -19,10 +19,6 @@ RUN npx prisma generate && \
 # Build application
 RUN npm run build
 
-# Compile seed scripts
-RUN npx tsc data/prisma/seed.ts --outDir dist/seed --esModuleInterop --resolveJsonModule --skipLibCheck && \
-    npx tsc data/prisma-auth/seed.ts --outDir dist/seed --esModuleInterop --resolveJsonModule --skipLibCheck
-
 # prod
 FROM node:20-alpine AS runner
 WORKDIR /app
