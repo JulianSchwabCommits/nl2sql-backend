@@ -4,13 +4,13 @@ on:
   workflow_run:
     workflows: ["2. Build & Push Docker Image"]
     types: [completed]
-    branches: [develop]
+    branches: [develop, main]
   workflow_dispatch:
     inputs:
       image-tag:
-        description: 'Docker image tag to deploy'
+        description: "Docker image tag to deploy"
         required: false
-        default: 'latest'
+        default: "latest"
 
 permissions:
   id-token: write
