@@ -77,7 +77,7 @@ This project includes complete AWS ECS deployment infrastructure with CI/CD pipe
 
 4. **Push to GitHub**
    ```bash
-   git push origin main  # Triggers automatic deployment
+   git push origin develop  # Triggers automatic deployment
    ```
 
 See [QUICKSTART.md](./QUICKSTART.md) for detailed instructions.

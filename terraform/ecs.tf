@@ -229,10 +229,8 @@ resource "aws_ecs_service" "backend" {
     container_port   = var.app_port
   }
 
-  deployment_configuration {
-    maximum_percent         = 200
-    minimum_healthy_percent = 100
-  }
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
 
   deployment_circuit_breaker {
     enable   = true
@@ -245,7 +243,7 @@ resource "aws_ecs_service" "backend" {
   }
 
   depends_on = [
-    aws_lb_listener.https,
+    aws_lb_listener.http,
     aws_iam_role_policy_attachment.ecs_task_execution
   ]
 
