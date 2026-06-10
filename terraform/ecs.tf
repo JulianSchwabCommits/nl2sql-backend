@@ -175,6 +175,10 @@ resource "aws_ecs_task_definition" "backend" {
         {
           name  = "DATABASE_USER"
           value = var.db_master_username
+        },
+        {
+          name  = "CORS_ORIGIN"
+          value = "http://localhost:5173,http://nl2sql-prod-frontend-alb-1770804183.eu-central-2.elb.amazonaws.com"
         }
       ]
 
