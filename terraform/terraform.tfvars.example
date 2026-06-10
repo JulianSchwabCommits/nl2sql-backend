@@ -1,0 +1,30 @@
+# Copy this file to terraform.tfvars and adjust values as needed
+# terraform.tfvars is gitignored
+
+aws_region  = "us-east-1"
+environment = "prod"
+
+# VPC Configuration
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+# RDS Configuration
+rds_instance_class        = "db.t4g.micro"  # Cheapest: ~$13/month
+rds_allocated_storage     = 20               # GB
+rds_max_allocated_storage = 100              # GB (autoscaling limit)
+rds_backup_retention_days = 7
+rds_multi_az              = false            # Set true for production HA
+
+# ElastiCache Configuration
+redis_node_type       = "cache.t4g.micro"    # Cheapest: ~$11/month
+redis_num_cache_nodes = 1
+
+# Network
+enable_nat_gateway = false  # Set true if backend needs to call external APIs (OpenAI)
+                            # Costs ~$32/month but required for private subnet internet access
+
+# Tags
+tags = {
+  Owner = "DevTeam"
+  Cost  = "Production"
+}

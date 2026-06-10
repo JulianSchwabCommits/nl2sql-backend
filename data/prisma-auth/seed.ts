@@ -11,8 +11,12 @@ async function main() {
   });
   const prisma = new PrismaClient({ adapter });
 
-  const adminEmail = 'jla.schwab@gmail.com';
-  const adminPassword = await bcrypt.hash('admin12345', 10);
+  if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) {
+    throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD environment variables must be set');
+  }
+
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
 
   const existing = await prisma.user.findUnique({
     where: { email: adminEmail },

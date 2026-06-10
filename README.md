@@ -2,6 +2,13 @@
 
 NestJS backend with JWT authentication and PostgreSQL.
 
+## 🚀 Quick Links
+
+- **Local Development**: See below
+- **AWS Deployment**: [QUICKSTART.md](./QUICKSTART.md) or [DEPLOYMENT.md](./DEPLOYMENT.md)
+- **CI/CD Pipeline**: [.github/workflows/README.md](./.github/workflows/README.md)
+- **Deployment Checklist**: [CHECKLIST.md](./CHECKLIST.md)
+
 ## Prerequisites
 
 - Docker & Docker Compose
@@ -47,6 +54,71 @@ docker compose exec app npx tsx data/prisma/seed.ts
 | db | 5432 | PostgreSQL (main data) |
 | auth-db | 5433 | PostgreSQL (auth data) |
 | redisDB | 6379 | Redis (conversations) |
+
+## 🌐 AWS Deployment
+
+This project includes complete AWS ECS deployment infrastructure with CI/CD pipelines.
+
+### Quick Deploy
+
+1. **Setup SSL Certificate**
+   ```bash
+   cd scripts && ./setup-ssl-certificate.sh
+   ```
+
+2. **Configure Settings**
+   - Edit `terraform/terraform.tfvars` (domain, certificate ARN)
+   - Edit `terraform/secrets.tfvars` (OpenAI key)
+
+3. **Deploy Everything**
+   ```bash
+   ./setup-complete-deployment.sh
+   ```
+
+4. **Push to GitHub**
+   ```bash
+   git push origin main  # Triggers automatic deployment
+   ```
+
+See [QUICKSTART.md](./QUICKSTART.md) for detailed instructions.
+
+### Infrastructure
+
+- **ECS Fargate** - Runs containerized application
+- **Application Load Balancer** - HTTPS traffic with custom domain
+- **RDS PostgreSQL** - Database
+- **ElastiCache Redis** - Caching and sessions
+- **ECR** - Docker image registry
+- **Secrets Manager** - Secure secrets storage
+- **CloudWatch** - Logging and monitoring
+
+### CI/CD Pipeline
+
+Three separate GitHub Actions workflows:
+1. **Test** - Lint and test on every PR/push
+2. **Build** - Build Docker image and push to ECR
+3. **Deploy** - Deploy to ECS (zero-downtime rolling update)
+
+**Security**: Uses GitHub OIDC for AWS authentication (no long-lived credentials!)
+
+See [.github/workflows/README.md](./.github/workflows/README.md) for details.
+
+### Cost Estimate
+
+~$60-65/month for production environment:
+- ECS Fargate: ~$15
+- Application Load Balancer: ~$16
+- RDS (db.t4g.micro): ~$13
+- ElastiCache (cache.t4g.micro): ~$11
+- Other: ~$10
+
+## 📚 Documentation
+
+- [QUICKSTART.md](./QUICKSTART.md) - Fast deployment guide
+- [DEPLOYMENT.md](./DEPLOYMENT.md) - Comprehensive deployment docs
+- [CHECKLIST.md](./CHECKLIST.md) - Step-by-step checklist
+- [SETUP_SUMMARY.md](./SETUP_SUMMARY.md) - What infrastructure was created
+- [.github/workflows/README.md](./.github/workflows/README.md) - CI/CD pipeline documentation
 
 ## Food Data
 

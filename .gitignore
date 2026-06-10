@@ -2,3 +2,14 @@ node_modules/
 dist/
 generated/
 .env
+
+# Deployment configuration files (may contain sensitive info)
+deployment-config.txt
+certificate-info.txt
+
+# Local development
+*.log
+.DS_Store
+
+
+.env.production
