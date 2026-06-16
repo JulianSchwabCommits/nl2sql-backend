@@ -2,8 +2,11 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
+  Patch,
   Query,
   Body,
+  Param,
   Req,
   Res,
   HttpCode,
@@ -11,6 +14,7 @@ import {
   NotFoundException,
   UnauthorizedException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -139,6 +143,157 @@ export class AdminController {
     await this.db.user.delete({ where: { email } });
 
     return { message: `User ${email} has been rejected and removed` };
+  }
+
+  @Public()
+  @Delete('users/:id')
+  @HttpCode(HttpStatus.OK)
+  async deleteUser(@Param('id') id: string, @Req() req: Request) {
+    await this.requireAdmin(req);
+
+    const userId = parseInt(id, 10);
+    if (isNaN(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.db.user.delete({ where: { id: userId } });
+
+    return { message: `User ${user.email} has been deleted` };
+  }
+
+  @Public()
+  @Patch('users/:id/name')
+  @HttpCode(HttpStatus.OK)
+  async updateUserName(
+    @Param('id') id: string,
+    @Body() body: { name: string },
+    @Req() req: Request,
+  ) {
+    await this.requireAdmin(req);
+
+    const userId = parseInt(id, 10);
+    if (isNaN(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.db.user.update({
+      where: { id: userId },
+      data: { name: body.name },
+    });
+
+    return { message: 'User name updated successfully' };
+  }
+
+  @Public()
+  @Patch('users/:id/email')
+  @HttpCode(HttpStatus.OK)
+  async updateUserEmail(
+    @Param('id') id: string,
+    @Body() body: { email: string },
+    @Req() req: Request,
+  ) {
+    await this.requireAdmin(req);
+
+    const userId = parseInt(id, 10);
+    if (isNaN(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Check if email already exists
+    const existing = await this.db.user.findUnique({
+      where: { email: body.email },
+    });
+    if (existing && existing.id !== userId) {
+      throw new BadRequestException('Email already in use');
+    }
+
+    await this.db.user.update({
+      where: { id: userId },
+      data: { email: body.email },
+    });
+
+    return { message: 'User email updated successfully' };
+  }
+
+  @Public()
+  @Patch('users/:id/role')
+  @HttpCode(HttpStatus.OK)
+  async updateUserRole(
+    @Param('id') id: string,
+    @Body() body: { role: 'USER' | 'ADMIN' },
+    @Req() req: Request,
+  ) {
+    await this.requireAdmin(req);
+
+    const userId = parseInt(id, 10);
+    if (isNaN(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!['USER', 'ADMIN'].includes(body.role)) {
+      throw new BadRequestException('Invalid role');
+    }
+
+    await this.db.user.update({
+      where: { id: userId },
+      data: { role: body.role },
+    });
+
+    return { message: 'User role updated successfully' };
+  }
+
+  @Public()
+  @Patch('users/:id/password')
+  @HttpCode(HttpStatus.OK)
+  async resetUserPassword(
+    @Param('id') id: string,
+    @Body() body: { password: string },
+    @Req() req: Request,
+  ) {
+    await this.requireAdmin(req);
+
+    const userId = parseInt(id, 10);
+    if (isNaN(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!body.password || body.password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters');
+    }
+
+    const hashedPassword = await bcrypt.hash(body.password, 10);
+
+    await this.db.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    return { message: 'User password reset successfully' };
   }
 
   // ─── Helper ─────────────────────────────────────────────────────
