@@ -306,7 +306,9 @@ export class AdminController {
       ? req.headers.authorization.slice(7)
       : null;
 
-    const token = cookieToken || headerToken;
+    // Prefer the freshly-sent Authorization header over a (possibly stale)
+    // admin_token cookie.
+    const token = headerToken || cookieToken;
 
     if (!token) {
       throw new ForbiddenException('Admin access required');

@@ -10,7 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ConfigService } from "@nestjs/config";
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto } from './dto';
 import { AuthGuard } from './guards/auth.guard';
@@ -18,7 +18,7 @@ import { RefreshGuard } from './guards/refresh.guard';
 import { Public } from './decorators/public.decorator';
 import type { Response } from 'express';
 
-@Controller('auth')
+@Controller("auth")
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -26,13 +26,13 @@ export class AuthController {
   ) {}
 
   @Public()
-  @Post('signup')
+  @Post("signup")
   async signup(@Body() dto: RegisterDto) {
     return this.authService.signup(dto);
   }
 
   @Public()
-  @Post('login')
+  @Post("login")
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: any) {
     const tokens = await this.authService.login(dto);
@@ -41,7 +41,7 @@ export class AuthController {
   }
 
   @UseGuards(RefreshGuard)
-  @Post('refresh')
+  @Post("refresh")
   @HttpCode(HttpStatus.OK)
   async refresh(@Req() req: any, @Res({ passthrough: true }) res: any) {
     const tokens = await this.authService.refresh(

@@ -28,7 +28,10 @@
     "auth:reset": "npx prisma migrate reset --config prisma-auth.config.ts",
     "auth:seed": "npx ts-node data/prisma-auth/seed.ts",
     "auth:seed:prod": "node dist/seed/data/prisma-auth/seed.js",
-    "db:seed:prod": "node dist/seed/data/prisma/seed.js"
+    "db:seed:prod": "node dist/seed/data/prisma/seed.js",
+    "redis:tunnel": "bash scripts/redis-tunnel.sh start",
+    "redis:tunnel:stop": "bash scripts/redis-tunnel.sh stop",
+    "redis:tunnel:status": "bash scripts/redis-tunnel.sh status"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

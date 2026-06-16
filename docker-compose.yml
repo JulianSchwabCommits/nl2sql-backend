@@ -1,78 +1,10 @@
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: nl2sql
-      POSTGRES_PASSWORD: nl2sql
-      POSTGRES_DB: nl2sql
-    ports:
-      - '5432:5432'
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nl2sql -d nl2sql"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - backend
-
-  auth-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: auth
-      POSTGRES_PASSWORD: auth
-      POSTGRES_DB: auth
-    ports:
-      - '5433:5432'
-    volumes:
-      - pgdata-auth:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U auth -d auth"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - backend
-
-  redisDB:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - '6379:6379'
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - backend
-    command: 
-      - redis-server
-      - --appendonly yes
-      - --maxmemory 512mb
-      - --maxmemory-policy allkeys-lru
-      - --save 60 1000
-      - --tcp-backlog 511
-      - --timeout 300
-
   app:
     build:
       context: .
       dockerfile: Dockerfile
       target: runner
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-      auth-db:
-        condition: service_healthy
-      redisDB:
-        condition: service_healthy
     ports:
       - '3000:3000'
     volumes:
@@ -88,6 +20,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     networks:
       - backend
     healthcheck:
@@ -108,8 +42,3 @@ services:
 networks:
   backend:
     driver: bridge
-
-volumes:
-  pgdata:
-  pgdata-auth:
-  redisdata:

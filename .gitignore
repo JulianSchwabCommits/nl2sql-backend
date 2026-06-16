@@ -11,5 +11,7 @@ certificate-info.txt
 *.log
 .DS_Store
 
+# Certificates
+*.pem
 
 .env.production
