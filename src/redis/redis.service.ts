@@ -17,6 +17,12 @@ export interface Conversation {
   createdAt: string;
 }
 
+export interface ChatExchange {
+  prompt: string;
+  reply: string;
+  timestamp: string;
+}
+
 
 @Injectable()
 export class RedisService {
