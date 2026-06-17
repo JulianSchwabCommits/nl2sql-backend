@@ -31,7 +31,7 @@ describe("RefreshGuard", () => {
     const result = await guard.canActivate(context);
 
     expect(result).toBe(true);
-    const req = context.switchToHttp().getRequest() as any;
+    const req = context.switchToHttp().getRequest();
     expect(req.user.sub).toBe(1);
     expect(req.user.refreshToken).toBe("valid-refresh");
   });

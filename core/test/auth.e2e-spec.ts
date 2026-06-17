@@ -32,7 +32,7 @@ class MockAuthDatabaseService {
       }
       return { ...user };
     }),
-    findMany: jest.fn(({ where, select, orderBy }: any = {}) => {
+    findMany: jest.fn(({ where }: any = {}) => {
       let result = [...this.users];
       if (where) {
         result = result.filter((u) => {
@@ -72,7 +72,7 @@ class MockAuthDatabaseService {
     }),
   };
 
-  async isHealthy() {
+  isHealthy() {
     return true;
   }
 

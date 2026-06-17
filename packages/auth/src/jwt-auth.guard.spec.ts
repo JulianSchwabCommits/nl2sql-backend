@@ -1,5 +1,4 @@
 import { JwtAuthGuard } from "./jwt-auth.guard";
-import { IS_PUBLIC_KEY } from "./public.decorator";
 import {
   ExecutionContext,
   ForbiddenException,
