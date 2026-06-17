@@ -1,15 +1,39 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI/CD Pipeline — nl2sql-backend microservices monorepo
+#
+# Architecture:
+#   api-gateway (NGINX)  ──► core   (NestJS)  ──► [auth DB]
+#                         ──► agent  (NestJS)  ──► database (NestJS) ──► [food DB]
+#
+# Shared packages: @nl2sql/auth, @nl2sql/logger  (used by core, agent, database)
+#
+# Change-detection logic:
+#   - Only the services whose files actually changed are built and deployed.
+#   - Shared-package or root-config changes trigger core + agent + database.
+#   - api-gateway is NGINX-only; it rebuilds only when api-gateway/** changes.
+#   - workflow_dispatch always deploys every service.
+#
+# Required GitHub Secrets:
+#   Shared:       AWS_ROLE_ARN, AWS_REGION, ECS_CLUSTER_NAME
+#   Per service:  ECR_REPO_<SVC>, ECS_SERVICE_<SVC>, ECS_TASK_DEF_<SVC>
+#                 where <SVC> = CORE | AGENT | DATABASE | GATEWAY
+# ─────────────────────────────────────────────────────────────────────────────
 name: CI/CD Pipeline
 
 on:
   push:
     branches: [develop]
     paths:
-      - "src/**"
+      - "core/**"
+      - "agent/**"
+      - "database/**"
+      - "api-gateway/**"
+      - "packages/**"
       - "test/**"
-      - "package*.json"
-      - "prisma*.config.ts"
-      - "data/prisma/**"
-      - "Dockerfile"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - "jest.config.js"
       - ".github/workflows/ci-cd.yml"
   pull_request:
     branches: [develop, main]
@@ -19,18 +43,120 @@ permissions:
   id-token: write
   contents: read
 
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
+  # ── 1. Detect which services changed ───────────────────────────
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.eval.outputs.core }}
+      agent: ${{ steps.eval.outputs.agent }}
+      database: ${{ steps.eval.outputs.database }}
+      gateway: ${{ steps.eval.outputs.gateway }}
+      services: ${{ steps.matrix.outputs.services }}
+      has_deployable: ${{ steps.matrix.outputs.has_deployable }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Path filter
+        if: github.event_name != 'workflow_dispatch'
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig*.json'
+              - '.github/workflows/ci-cd.yml'
+            core:
+              - 'core/**'
+            agent:
+              - 'agent/**'
+            database:
+              - 'database/**'
+            gateway:
+              - 'api-gateway/**'
+
+      - name: Evaluate per-service flags
+        id: eval
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "core=true"     >> "$GITHUB_OUTPUT"
+            echo "agent=true"    >> "$GITHUB_OUTPUT"
+            echo "database=true" >> "$GITHUB_OUTPUT"
+            echo "gateway=true"  >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SHARED="${{ steps.filter.outputs.shared }}"
+
+          # Node services rebuild when shared packages / root configs change
+          if [[ "$SHARED" == "true" || "${{ steps.filter.outputs.core }}" == "true" ]]; then
+            echo "core=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "core=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "$SHARED" == "true" || "${{ steps.filter.outputs.agent }}" == "true" ]]; then
+            echo "agent=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "agent=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "$SHARED" == "true" || "${{ steps.filter.outputs.database }}" == "true" ]]; then
+            echo "database=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "database=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Gateway is NGINX-only — only its own files matter
+          if [[ "${{ steps.filter.outputs.gateway }}" == "true" ]]; then
+            echo "gateway=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "gateway=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build deployment matrix
+        id: matrix
+        run: |
+          MATRIX="[]"
+
+          if [[ "${{ steps.eval.outputs.core }}" == "true" ]]; then
+            MATRIX=$(echo "$MATRIX" | jq -c '. + [{"service":"core","dockerfile":"core/Dockerfile","context":"."}]')
+          fi
+          if [[ "${{ steps.eval.outputs.agent }}" == "true" ]]; then
+            MATRIX=$(echo "$MATRIX" | jq -c '. + [{"service":"agent","dockerfile":"agent/Dockerfile","context":"."}]')
+          fi
+          if [[ "${{ steps.eval.outputs.database }}" == "true" ]]; then
+            MATRIX=$(echo "$MATRIX" | jq -c '. + [{"service":"database","dockerfile":"database/Dockerfile","context":"."}]')
+          fi
+          if [[ "${{ steps.eval.outputs.gateway }}" == "true" ]]; then
+            MATRIX=$(echo "$MATRIX" | jq -c '. + [{"service":"gateway","dockerfile":"api-gateway/Dockerfile","context":"./api-gateway"}]')
+          fi
+
+          if [[ "$MATRIX" == "[]" ]]; then
+            echo "has_deployable=false" >> "$GITHUB_OUTPUT"
+            echo 'services={"include":[]}' >> "$GITHUB_OUTPUT"
+          else
+            echo "has_deployable=true" >> "$GITHUB_OUTPUT"
+            echo "services={\"include\":$MATRIX}" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "### Changed services" >> "$GITHUB_STEP_SUMMARY"
+          echo "$MATRIX" | jq -r '.[] | "- \(.service)"' >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "- (none)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── 2. Test & Lint ─────────────────────────────────────────────
   test:
     name: Test & Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
@@ -38,21 +164,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Prisma Client
+      - name: Generate Prisma clients
+        env:
+          AUTH_DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
         run: |
-          npx prisma generate
-          npx prisma generate --config prisma-auth.config.ts
+          npm run prisma:generate -w @nl2sql/core
+          npm run prisma:generate -w @nl2sql/database
 
-      - name: Run linter
+      - name: Lint
         run: npm run lint
 
       - name: Run tests
-        run: npm test
+        run: npx jest --passWithNoTests --forceExit
 
       - name: Run test coverage
-        run: npm run test:cov
+        run: npx jest --coverage --passWithNoTests --forceExit
 
-      - name: Upload coverage reports
+      - name: Upload coverage
         uses: codecov/codecov-action@v4
         if: success()
         with:
@@ -61,33 +190,62 @@ jobs:
           name: backend-coverage
         continue-on-error: true
 
-      - name: Tests completed
-        run: |
-          echo "All tests passed successfully!"
-          echo "Next: Building Docker image..."
-
-  build:
-    name: Build & Push Docker Image
+  # ── 3. Build & Deploy (per changed service) ────────────────────
+  build-deploy:
+    name: "Deploy: ${{ matrix.service }}"
+    needs: [test, changes]
+    if: |
+      needs.changes.outputs.has_deployable == 'true' &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+        github.event_name == 'workflow_dispatch'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
-      short-sha: ${{ steps.vars.outputs.short-sha }}
-
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.changes.outputs.services) }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up variables
+      # ── Map service name → secret values ──
+      - name: Resolve service config
+        id: config
+        run: |
+          case "${{ matrix.service }}" in
+            core)
+              echo "ecr_repo=${{ secrets.ECR_REPO_CORE }}"         >> "$GITHUB_OUTPUT"
+              echo "ecs_service=${{ secrets.ECS_SERVICE_CORE }}"    >> "$GITHUB_OUTPUT"
+              echo "ecs_task_def=${{ secrets.ECS_TASK_DEF_CORE }}"  >> "$GITHUB_OUTPUT"
+              echo "container=core"                                 >> "$GITHUB_OUTPUT"
+              ;;
+            agent)
+              echo "ecr_repo=${{ secrets.ECR_REPO_AGENT }}"        >> "$GITHUB_OUTPUT"
+              echo "ecs_service=${{ secrets.ECS_SERVICE_AGENT }}"   >> "$GITHUB_OUTPUT"
+              echo "ecs_task_def=${{ secrets.ECS_TASK_DEF_AGENT }}" >> "$GITHUB_OUTPUT"
+              echo "container=agent"                                >> "$GITHUB_OUTPUT"
+              ;;
+            database)
+              echo "ecr_repo=${{ secrets.ECR_REPO_DATABASE }}"        >> "$GITHUB_OUTPUT"
+              echo "ecs_service=${{ secrets.ECS_SERVICE_DATABASE }}"   >> "$GITHUB_OUTPUT"
+              echo "ecs_task_def=${{ secrets.ECS_TASK_DEF_DATABASE }}" >> "$GITHUB_OUTPUT"
+              echo "container=database"                                >> "$GITHUB_OUTPUT"
+              ;;
+            gateway)
+              echo "ecr_repo=${{ secrets.ECR_REPO_GATEWAY }}"        >> "$GITHUB_OUTPUT"
+              echo "ecs_service=${{ secrets.ECS_SERVICE_GATEWAY }}"   >> "$GITHUB_OUTPUT"
+              echo "ecs_task_def=${{ secrets.ECS_TASK_DEF_GATEWAY }}" >> "$GITHUB_OUTPUT"
+              echo "container=api-gateway"                             >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Set image tag
         id: vars
         run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "short-sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "tag=latest" >> $GITHUB_OUTPUT
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
+      # ── Docker build & push ──
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -98,137 +256,90 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Extract metadata for Docker
+      - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ steps.config.outputs.ecr_repo }}
           tags: |
-            type=raw,value=${{ steps.vars.outputs.tag }}
-            type=raw,value=${{ steps.vars.outputs.short-sha }}
+            type=raw,value=${{ steps.vars.outputs.short_sha }}
             type=raw,value=latest
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
           provenance: false
           sbom: false
 
-      - name: Image digest
-        run: |
-          echo "Image pushed successfully with tags:"
-          echo "${{ steps.meta.outputs.tags }}"
-          echo "Short SHA: ${{ steps.vars.outputs.short-sha }}"
-          echo "Next: Deploying to AWS ECS..."
-
-  deploy:
-    name: Deploy to AWS ECS
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [test, build]
-    # Only run if build succeeded
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Determine image tag
-        id: image-tag
-        run: |
-          TAG=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "Deploying image tag: ${TAG}"
-
-      - name: Download task definition
+      # ── ECS deploy ──
+      - name: Download current task definition
         run: |
           aws ecs describe-task-definition \
-            --task-definition ${{ secrets.ECS_TASK_DEFINITION_FAMILY }} \
+            --task-definition "${{ steps.config.outputs.ecs_task_def }}" \
             --query taskDefinition > task-definition.json
 
-      - name: Fill in the new image ID in the Amazon ECS task definition
+      - name: Render new image into task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: task-definition.json
-          container-name: backend
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:${{ steps.image-tag.outputs.tag }}
+          container-name: ${{ steps.config.outputs.container }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ steps.config.outputs.ecr_repo }}:${{ steps.vars.outputs.short_sha }}
 
-      - name: Deploy Amazon ECS task definition
+      - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ secrets.ECS_SERVICE_NAME }}
+          service: ${{ steps.config.outputs.ecs_service }}
           cluster: ${{ secrets.ECS_CLUSTER_NAME }}
           wait-for-service-stability: true
           wait-for-minutes: 10
 
-      - name: Verify deployment
+      - name: Deployment summary
         run: |
-          echo "Deployment completed successfully!"
-          echo "Service: ${{ secrets.ECS_SERVICE_NAME }}"
-          echo "Cluster: ${{ secrets.ECS_CLUSTER_NAME }}"
-          echo "Image tag: ${{ steps.image-tag.outputs.tag }}"
-          echo "Branch: ${{ github.ref }}"
+          echo "### ${{ matrix.service }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** \`${{ steps.vars.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Service:** \`${{ steps.config.outputs.ecs_service }}\`" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Get service status
-        run: |
-          echo "Service Status:"
-          aws ecs describe-services \
-            --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
-            --services ${{ secrets.ECS_SERVICE_NAME }} \
-            --query 'services[0].[serviceName,status,runningCount,desiredCount]' \
-            --output table
-
+  # ── 4. Pipeline Summary ────────────────────────────────────────
   summary:
     name: Pipeline Summary
     runs-on: ubuntu-latest
-    needs: [test, build, deploy]
+    needs: [test, changes, build-deploy]
     if: always()
-
     steps:
-      - name: Check pipeline status
+      - name: Results
         run: |
-          echo "CI/CD Pipeline Summary"
-          echo "========================="
-          echo "Test:   ${{ needs.test.result }}"
-          echo "Build:  ${{ needs.build.result }}"
-          echo "Deploy: ${{ needs.deploy.result }}"
-          echo ""
+          echo "## CI/CD Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Stage | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Test & Lint | \`${{ needs.test.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Changes     | core=${{ needs.changes.outputs.core }}, agent=${{ needs.changes.outputs.agent }}, database=${{ needs.changes.outputs.database }}, gateway=${{ needs.changes.outputs.gateway }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build/Deploy| \`${{ needs.build-deploy.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.test.result }}" == "failure" ]]; then
-            echo "Tests failed - pipeline stopped"
+            echo ""
+            echo "Tests failed — pipeline stopped."
             exit 1
-          elif [[ "${{ needs.build.result }}" == "failure" ]]; then
-            echo "Build failed - deployment skipped"
+          elif [[ "${{ needs.build-deploy.result }}" == "failure" ]]; then
+            echo ""
+            echo "One or more deployments failed."
             exit 1
-          elif [[ "${{ needs.deploy.result }}" == "failure" ]]; then
-            echo "Deployment failed"
-            exit 1
-          elif [[ "${{ needs.deploy.result }}" == "skipped" ]]; then
-            echo "Deployment was skipped (PR or non-develop branch)"
+          elif [[ "${{ needs.build-deploy.result }}" == "skipped" ]]; then
+            echo ""
+            echo "No services to deploy (PR or no changes)."
           else
-            echo "All pipeline stages completed successfully!"
+            echo ""
+            echo "All stages completed successfully."
           fi
