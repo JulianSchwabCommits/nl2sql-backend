@@ -2,21 +2,20 @@
 # CI/CD Pipeline — nl2sql-backend microservices monorepo
 #
 # Architecture:
-#   api-gateway (NGINX)  ──► core   (NestJS)  ──► [auth DB]
-#                         ──► agent  (NestJS)  ──► database (NestJS) ──► [food DB]
+#   ALB ──► core     (NestJS)  ──► [auth DB]
+#       ──► agent    (NestJS)  ──► database (NestJS) ──► [food DB]
 #
 # Shared packages: @nl2sql/auth, @nl2sql/logger  (used by core, agent, database)
 #
 # Change-detection logic:
 #   - Only the services whose files actually changed are built and deployed.
 #   - Shared-package or root-config changes trigger core + agent + database.
-#   - api-gateway is NGINX-only; it rebuilds only when api-gateway/** changes.
 #   - workflow_dispatch always deploys every service.
 #
 # Required GitHub Secrets:
 #   Shared:       AWS_ROLE_ARN, AWS_REGION, ECS_CLUSTER_NAME
 #   Per service:  ECR_REPO_<SVC>, ECS_SERVICE_<SVC>, ECS_TASK_DEF_<SVC>
-#                 where <SVC> = CORE | AGENT | DATABASE | GATEWAY
+#                 where <SVC> = CORE | AGENT | DATABASE
 # ─────────────────────────────────────────────────────────────────────────────
 name: CI/CD Pipeline
 
@@ -27,7 +26,6 @@ on:
       - "core/**"
       - "agent/**"
       - "database/**"
-      - "api-gateway/**"
       - "packages/**"
       - "test/**"
       - "package.json"
@@ -53,7 +51,6 @@ jobs:
       core: ${{ steps.eval.outputs.core }}
       agent: ${{ steps.eval.outputs.agent }}
       database: ${{ steps.eval.outputs.database }}
-      gateway: ${{ steps.eval.outputs.gateway }}
       services: ${{ steps.matrix.outputs.services }}
       has_deployable: ${{ steps.matrix.outputs.has_deployable }}
     steps:
@@ -77,8 +74,6 @@ jobs:
               - 'agent/**'
             database:
               - 'database/**'
-            gateway:
-              - 'api-gateway/**'
 
       - name: Evaluate per-service flags
         id: eval
@@ -87,7 +82,6 @@ jobs:
             echo "core=true"     >> "$GITHUB_OUTPUT"
             echo "agent=true"    >> "$GITHUB_OUTPUT"
             echo "database=true" >> "$GITHUB_OUTPUT"
-            echo "gateway=true"  >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -112,13 +106,6 @@ jobs:
             echo "database=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # Gateway is NGINX-only — only its own files matter
-          if [[ "${{ steps.filter.outputs.gateway }}" == "true" ]]; then
-            echo "gateway=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "gateway=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build deployment matrix
         id: matrix
         run: |
@@ -132,9 +119,6 @@ jobs:
           fi
           if [[ "${{ steps.eval.outputs.database }}" == "true" ]]; then
             MATRIX=$(echo "$MATRIX" | jq -c '. + [{"service":"database","dockerfile":"database/Dockerfile","context":"."}]')
-          fi
-          if [[ "${{ steps.eval.outputs.gateway }}" == "true" ]]; then
-            MATRIX=$(echo "$MATRIX" | jq -c '. + [{"service":"gateway","dockerfile":"api-gateway/Dockerfile","context":"./api-gateway"}]')
           fi
 
           if [[ "$MATRIX" == "[]" ]]; then
@@ -231,12 +215,6 @@ jobs:
               echo "ecs_task_def=${{ secrets.ECS_TASK_DEF_DATABASE }}" >> "$GITHUB_OUTPUT"
               echo "container=database"                                >> "$GITHUB_OUTPUT"
               ;;
-            gateway)
-              echo "ecr_repo=${{ secrets.ECR_REPO_GATEWAY }}"        >> "$GITHUB_OUTPUT"
-              echo "ecs_service=${{ secrets.ECS_SERVICE_GATEWAY }}"   >> "$GITHUB_OUTPUT"
-              echo "ecs_task_def=${{ secrets.ECS_TASK_DEF_GATEWAY }}" >> "$GITHUB_OUTPUT"
-              echo "container=api-gateway"                             >> "$GITHUB_OUTPUT"
-              ;;
           esac
 
       - name: Set image tag
@@ -325,7 +303,7 @@ jobs:
           echo "| Stage | Result |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Test & Lint | \`${{ needs.test.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Changes     | core=${{ needs.changes.outputs.core }}, agent=${{ needs.changes.outputs.agent }}, database=${{ needs.changes.outputs.database }}, gateway=${{ needs.changes.outputs.gateway }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Changes     | core=${{ needs.changes.outputs.core }}, agent=${{ needs.changes.outputs.agent }}, database=${{ needs.changes.outputs.database }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Build/Deploy| \`${{ needs.build-deploy.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.test.result }}" == "failure" ]]; then
