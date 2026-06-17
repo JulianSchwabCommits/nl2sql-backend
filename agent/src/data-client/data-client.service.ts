@@ -57,6 +57,18 @@ export class DataClientService {
     return data.affectedRows;
   }
 
+  async checkRateLimit(
+    userId: string,
+    limit: number,
+    windowMs: number,
+  ): Promise<{ allowed: boolean; count: number; limit: number }> {
+    return this.request('POST', '/internal/rate-limit', {
+      userId,
+      limit,
+      windowMs,
+    });
+  }
+
   getAllConversations(userId: number): Promise<Conversation[]> {
     return this.request('GET', `/internal/conversations/${userId}`);
   }

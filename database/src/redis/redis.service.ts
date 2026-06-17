@@ -42,6 +42,40 @@ export class RedisService {
     return `user:${userId}:conversations`;
   }
 
+  private rateLimitKey(userId: string): string {
+    return `ratelimit:agent:user:${userId}`;
+  }
+
+  async checkRateLimit(
+    userId: string,
+    limit: number,
+    windowMs: number,
+  ): Promise<{ allowed: boolean; count: number; limit: number }> {
+    const script = `
+      local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+      if current >= tonumber(ARGV[1]) then
+        return -1
+      end
+      current = redis.call('INCR', KEYS[1])
+      if current == 1 then
+        redis.call('PEXPIRE', KEYS[1], ARGV[2])
+      end
+      return current
+    `;
+    const result = (await this.client.eval(
+      script,
+      1,
+      this.rateLimitKey(userId),
+      limit,
+      windowMs,
+    )) as number;
+
+    if (result === -1) {
+      return { allowed: false, count: limit, limit };
+    }
+    return { allowed: true, count: result, limit };
+  }
+
   async createConversation(
     userId: number,
     conversationId: string,

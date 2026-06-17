@@ -1,7 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
 
-const requireInt = (name: string): number => {
+export const requireInt = (name: string): number => {
   const raw = process.env[name];
   if (raw === undefined || raw === '') {
     throw new Error(`Missing required environment variable: ${name}`);

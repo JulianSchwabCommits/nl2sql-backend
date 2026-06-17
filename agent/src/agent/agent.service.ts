@@ -11,16 +11,10 @@ interface WriteResult {
   error?: string;
 }
 
-interface RateRecord {
-  count: number;
-  resetAt: number;
-}
-
 
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
-  private readonly requestCounts = new Map<string, RateRecord>();
   private readonly activeRequests = new Map<string, AbortController>();
 
   constructor(
@@ -48,12 +42,20 @@ export class AgentService {
     clientId?: string,
   ): Promise<AgentResult> {
     if (userId) {
-      const allowed = this.checkRateLimit(userId);
-      if (!allowed) {
+      const limit = await this.checkRateLimit(userId);
+      if (limit === 'over_quota') {
         return {
           reply: `Daily request limit reached (${this.cfg.maxRequestsPerDay} requests/day). Please try again tomorrow.`,
           queries: [],
           error: 'rate_limit',
+        };
+      }
+      if (limit === 'unavailable') {
+        return {
+          reply:
+            'Unable to verify your request limit right now. Please try again shortly.',
+          queries: [],
+          error: 'rate_limit_unavailable',
         };
       }
     }
@@ -200,24 +202,20 @@ export class AgentService {
     };
   }
 
-  private checkRateLimit(userId: string): boolean {
-    const now = Date.now();
-    const record = this.requestCounts.get(userId);
-
-    if (!record || now > record.resetAt) {
-      this.requestCounts.set(userId, {
-        count: 1,
-        resetAt: now + this.cfg.rateLimitWindowMs,
-      });
+  private async checkRateLimit(userId: string): Promise<boolean> {
+    try {
+      const { allowed } = await this.dataClient.checkRateLimit(
+        userId,
+        this.cfg.maxRequestsPerDay,
+        this.cfg.rateLimitWindowMs,
+      );
+      return allowed;
+    } catch (error: any) {
+      this.logger.warn(
+        `Rate limit check unavailable, allowing request: ${error.message}`,
+      );
       return true;
     }
-
-    if (record.count >= this.cfg.maxRequestsPerDay) {
-      return false;
-    }
-
-    record.count++;
-    return true;
   }
 
 

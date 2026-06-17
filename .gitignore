@@ -13,5 +13,7 @@ certificate-info.txt
 
 # Certificates
 *.pem
+# ...but commit the public RDS CA bundle; without it Docker mounts an empty dir at the path and TLS breaks
+!rds-combined-ca-bundle.pem
 
 .env.production

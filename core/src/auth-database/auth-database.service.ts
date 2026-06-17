@@ -22,4 +22,13 @@ export class AuthDatabaseService
   async onModuleDestroy() {
     await this.$disconnect();
   }
+
+  async isHealthy(): Promise<boolean> {
+    try {
+      await this.$queryRaw`SELECT 1`;
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
