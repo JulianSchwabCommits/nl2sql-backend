@@ -44,8 +44,8 @@ resource "aws_elasticache_cluster" "redis" {
 
   # Snapshot and Backup
   snapshot_retention_limit = 5
-  snapshot_window          = "03:00-05:00"  # UTC
-  maintenance_window       = "sun:05:00-sun:07:00"  # UTC
+  snapshot_window          = "03:00-05:00"         # UTC
+  maintenance_window       = "sun:05:00-sun:07:00" # UTC
 
   # Logs
   log_delivery_configuration {

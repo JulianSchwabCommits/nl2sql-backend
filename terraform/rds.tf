@@ -1,7 +1,7 @@
 # DB Subnet Group for RDS (TEMPORARY: using public subnets for initial setup)
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project_name}-${var.environment}-db-subnet-group"
-  subnet_ids = aws_subnet.public[*].id  # CHANGED to public for migrations
+  subnet_ids = aws_subnet.public[*].id # CHANGED to public for migrations
 
   tags = {
     Name = "${var.project_name}-${var.environment}-db-subnet-group"
@@ -43,30 +43,30 @@ resource "aws_db_instance" "postgres" {
   identifier = "${var.project_name}-${var.environment}-postgres"
 
   # Engine
-  engine               = "postgres"
-  engine_version       = "16.6"
-  instance_class       = var.rds_instance_class
-  allocated_storage    = var.rds_allocated_storage
+  engine                = "postgres"
+  engine_version        = "16.13"
+  instance_class        = var.rds_instance_class
+  allocated_storage     = var.rds_allocated_storage
   max_allocated_storage = var.rds_max_allocated_storage
-  storage_type         = "gp3"
-  storage_encrypted    = true
+  storage_type          = "gp3"
+  storage_encrypted     = true
 
   # Credentials
-  db_name  = "nl2sql"  # Default database
+  db_name  = "nl2sql" # Default database
   username = var.db_master_username
   password = var.db_master_password
 
   # Network
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
-  publicly_accessible    = true  # TEMPORARY: for initial migrations
+  publicly_accessible    = true # TEMPORARY: for initial migrations
   port                   = 5432
 
   # Backup
-  backup_retention_period = var.rds_backup_retention_days
-  backup_window          = "03:00-04:00"  # UTC
-  maintenance_window     = "mon:04:00-mon:05:00"  # UTC
-  skip_final_snapshot    = true  # TEMPORARY: skip snapshot for faster recreation
+  backup_retention_period   = var.rds_backup_retention_days
+  backup_window             = "03:00-04:00"         # UTC
+  maintenance_window        = "mon:04:00-mon:05:00" # UTC
+  skip_final_snapshot       = true                  # TEMPORARY: skip snapshot for faster recreation
   final_snapshot_identifier = "${var.project_name}-${var.environment}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
 
   # High Availability
@@ -81,11 +81,11 @@ resource "aws_db_instance" "postgres" {
   monitoring_role_arn             = aws_iam_role.rds_monitoring.arn
 
   # Performance Insights
-  performance_insights_enabled    = false  # Set to true for production (extra cost)
+  performance_insights_enabled = false # Set to true for production (extra cost)
   # performance_insights_retention_period = 7
 
   # Deletion Protection
-  deletion_protection = false  # Set to true for production
+  deletion_protection = false # Set to true for production
 
   # Auto minor version upgrade
   auto_minor_version_upgrade = true

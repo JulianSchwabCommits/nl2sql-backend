@@ -1,30 +1,45 @@
-# Copy this file to terraform.tfvars and adjust values as needed
+# Copy this file to terraform.tfvars and adjust values
 # terraform.tfvars is gitignored
 
 aws_region  = "us-east-1"
 environment = "prod"
 
-# VPC Configuration
+# VPC
 vpc_cidr           = "10.0.0.0/16"
 availability_zones = ["us-east-1a", "us-east-1b"]
 
-# RDS Configuration
-rds_instance_class        = "db.t4g.micro"  # Cheapest: ~$13/month
-rds_allocated_storage     = 20               # GB
-rds_max_allocated_storage = 100              # GB (autoscaling limit)
+# RDS
+rds_instance_class        = "db.t4g.micro"
+rds_allocated_storage     = 20
+rds_max_allocated_storage = 100
 rds_backup_retention_days = 7
-rds_multi_az              = false            # Set true for production HA
+rds_multi_az              = false
 
-# ElastiCache Configuration
-redis_node_type       = "cache.t4g.micro"    # Cheapest: ~$11/month
+# ElastiCache
+redis_node_type       = "cache.t4g.micro"
 redis_num_cache_nodes = 1
 
 # Network
-enable_nat_gateway = false  # Set true if backend needs to call external APIs (OpenAI)
-                            # Costs ~$32/month but required for private subnet internet access
+enable_nat_gateway = false
 
-# Tags
-tags = {
-  Owner = "DevTeam"
-  Cost  = "Production"
-}
+# ECS
+ecs_task_cpu                  = 512
+ecs_task_memory               = 1024
+ecs_desired_count             = 1
+ecs_enable_container_insights = false
+ecs_log_retention_days        = 7
+
+# Per-service image tags
+core_image_tag     = "latest"
+agent_image_tag    = "latest"
+database_image_tag = "latest"
+
+# Domain & SSL
+domain_name         = ""
+acm_certificate_arn = ""
+
+# ALB
+alb_enable_deletion_protection = false
+
+# CORS
+cors_origin = "http://localhost:5173"

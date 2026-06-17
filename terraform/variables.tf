@@ -1,5 +1,9 @@
+# --------------------------------------------------------------------------
+# General
+# --------------------------------------------------------------------------
+
 variable "aws_region" {
-  description = "AWS region to deploy resources"
+  description = "AWS region"
   type        = string
   default     = "us-east-1"
 }
@@ -16,7 +20,10 @@ variable "project_name" {
   default     = "nl2sql"
 }
 
-# VPC Configuration
+# --------------------------------------------------------------------------
+# VPC
+# --------------------------------------------------------------------------
+
 variable "vpc_cidr" {
   description = "CIDR block for VPC"
   type        = string
@@ -24,60 +31,71 @@ variable "vpc_cidr" {
 }
 
 variable "availability_zones" {
-  description = "Availability zones for multi-AZ deployment"
+  description = "Availability zones"
   type        = list(string)
   default     = ["us-east-1a", "us-east-1b"]
 }
 
-# RDS Configuration
+variable "enable_nat_gateway" {
+  description = "Enable NAT gateway for private subnets (~$32/month)"
+  type        = bool
+  default     = false
+}
+
+# --------------------------------------------------------------------------
+# RDS
+# --------------------------------------------------------------------------
+
 variable "rds_instance_class" {
   description = "RDS instance class"
   type        = string
-  default     = "db.t4g.micro"  # ~$13/month
+  default     = "db.t4g.micro"
 }
 
 variable "rds_allocated_storage" {
-  description = "Allocated storage for RDS in GB"
+  description = "Allocated storage in GB"
   type        = number
   default     = 20
 }
 
 variable "rds_max_allocated_storage" {
-  description = "Maximum allocated storage for RDS autoscaling in GB"
+  description = "Max storage for autoscaling in GB"
   type        = number
   default     = 100
 }
 
 variable "rds_backup_retention_days" {
-  description = "Number of days to retain RDS backups"
+  description = "Backup retention days"
   type        = number
   default     = 7
 }
 
 variable "rds_multi_az" {
-  description = "Enable Multi-AZ deployment for RDS"
+  description = "Enable Multi-AZ"
   type        = bool
-  default     = false  # Set to true for production HA
+  default     = false
 }
 
-# Database Credentials (from secrets.tfvars)
 variable "db_master_username" {
-  description = "Master username for RDS instance"
+  description = "RDS master username"
   type        = string
   sensitive   = true
 }
 
 variable "db_master_password" {
-  description = "Master password for RDS instance"
+  description = "RDS master password"
   type        = string
   sensitive   = true
 }
 
-# ElastiCache Configuration
+# --------------------------------------------------------------------------
+# ElastiCache
+# --------------------------------------------------------------------------
+
 variable "redis_node_type" {
   description = "ElastiCache node type"
   type        = string
-  default     = "cache.t4g.micro"  # ~$11/month
+  default     = "cache.t4g.micro"
 }
 
 variable "redis_num_cache_nodes" {
@@ -86,90 +104,108 @@ variable "redis_num_cache_nodes" {
   default     = 1
 }
 
-# Network Configuration
-variable "allowed_cidr_blocks" {
-  description = "CIDR blocks allowed to access ALB (0.0.0.0/0 for public access)"
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-}
+# --------------------------------------------------------------------------
+# ECS (shared defaults for all services)
+# --------------------------------------------------------------------------
 
-variable "enable_nat_gateway" {
-  description = "Enable NAT gateway for private subnets (costs ~$32/month)"
-  type        = bool
-  default     = false  # Set to true if backend needs to call external APIs from private subnet
-}
-
-# ECS Configuration
 variable "ecs_task_cpu" {
-  description = "CPU units for ECS task (256 = 0.25 vCPU, 512 = 0.5 vCPU, 1024 = 1 vCPU)"
+  description = "CPU units per task (256=0.25vCPU, 512=0.5vCPU)"
   type        = number
   default     = 512
 }
 
 variable "ecs_task_memory" {
-  description = "Memory for ECS task in MB"
+  description = "Memory per task in MB"
   type        = number
   default     = 1024
 }
 
 variable "ecs_desired_count" {
-  description = "Desired number of ECS tasks"
+  description = "Desired task count per service"
   type        = number
   default     = 1
 }
 
 variable "ecs_enable_container_insights" {
-  description = "Enable CloudWatch Container Insights for ECS"
+  description = "Enable CloudWatch Container Insights"
   type        = bool
-  default     = false  # Set to true for production monitoring (extra cost)
+  default     = false
 }
 
 variable "ecs_log_retention_days" {
-  description = "CloudWatch log retention in days for ECS"
+  description = "CloudWatch log retention days"
   type        = number
   default     = 7
 }
 
-variable "app_port" {
-  description = "Application port"
-  type        = number
-  default     = 3000
-}
+# --------------------------------------------------------------------------
+# Per-service image tags
+# --------------------------------------------------------------------------
 
-variable "app_image_tag" {
-  description = "Docker image tag to deploy"
+variable "core_image_tag" {
+  description = "Docker image tag for core service"
   type        = string
   default     = "latest"
 }
 
-# ALB Configuration
-variable "alb_enable_deletion_protection" {
-  description = "Enable deletion protection for ALB"
-  type        = bool
-  default     = false  # Set to true for production
-}
-
-# SSL Certificate
-variable "acm_certificate_arn" {
-  description = "ARN of ACM certificate for HTTPS (must be created manually or via Route53)"
+variable "agent_image_tag" {
+  description = "Docker image tag for agent service"
   type        = string
+  default     = "latest"
 }
 
-variable "domain_name" {
-  description = "Domain name for the application (e.g., api.example.com)"
+variable "database_image_tag" {
+  description = "Docker image tag for database service"
+  type        = string
+  default     = "latest"
+}
+
+# --------------------------------------------------------------------------
+# ALB / Networking
+# --------------------------------------------------------------------------
+
+variable "allowed_cidr_blocks" {
+  description = "CIDRs allowed to reach the ALB"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "alb_enable_deletion_protection" {
+  description = "Enable ALB deletion protection"
+  type        = bool
+  default     = false
+}
+
+variable "acm_certificate_arn" {
+  description = "ACM certificate ARN for HTTPS (empty = HTTP only)"
   type        = string
   default     = ""
 }
 
-# Application Secrets (from secrets.tfvars)
+variable "domain_name" {
+  description = "Domain name (e.g. api.example.com)"
+  type        = string
+  default     = ""
+}
+
+variable "cors_origin" {
+  description = "Allowed CORS origins (comma-separated)"
+  type        = string
+  default     = "*"
+}
+
+# --------------------------------------------------------------------------
+# Secrets (from secrets.tfvars)
+# --------------------------------------------------------------------------
+
 variable "jwt_secret" {
-  description = "JWT secret for authentication"
+  description = "JWT access token secret"
   type        = string
   sensitive   = true
 }
 
 variable "jwt_refresh_secret" {
-  description = "JWT refresh secret"
+  description = "JWT refresh token secret"
   type        = string
   sensitive   = true
 }
@@ -180,9 +216,18 @@ variable "openai_api_key" {
   sensitive   = true
 }
 
+variable "internal_api_key" {
+  description = "Shared key for inter-service authentication (x-internal-key header)"
+  type        = string
+  sensitive   = true
+}
+
+# --------------------------------------------------------------------------
 # Tags
+# --------------------------------------------------------------------------
+
 variable "tags" {
-  description = "Additional tags to apply to all resources"
+  description = "Additional tags for all resources"
   type        = map(string)
   default     = {}
 }
