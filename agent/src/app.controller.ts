@@ -1,14 +1,19 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get } from "@nestjs/common";
 
 @Controller()
 export class AppController {
   @Get()
   root(): string {
-    return 'agent-service is running';
+    return "agent-service is running";
   }
 
-  @Get('health')
+  @Get("health")
   health() {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    return {
+      status: "ok",
+      service: "agent",
+      version: "microservices-v1",
+      timestamp: new Date().toISOString(),
+    };
   }
 }

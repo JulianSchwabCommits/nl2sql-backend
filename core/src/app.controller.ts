@@ -1,7 +1,7 @@
-import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
-import { Public } from '@nl2sql/auth';
-import { AppService } from './app.service';
-import { AuthDatabaseService } from './auth-database';
+import { Controller, Get, HttpException, HttpStatus } from "@nestjs/common";
+import { Public } from "@nl2sql/auth";
+import { AppService } from "./app.service";
+import { AuthDatabaseService } from "./auth-database";
 
 @Controller()
 export class AppController {
@@ -17,14 +17,16 @@ export class AppController {
   }
 
   @Public()
-  @Get('health')
+  @Get("health")
   async health() {
     const dependencies = {
-      database: (await this.authDb.isHealthy()) ? 'up' : 'down',
+      database: (await this.authDb.isHealthy()) ? "up" : "down",
     };
-    const healthy = Object.values(dependencies).every((s) => s === 'up');
+    const healthy = Object.values(dependencies).every((s) => s === "up");
     const body = {
-      status: healthy ? 'ok' : 'degraded',
+      status: healthy ? "ok" : "degraded",
+      service: "core",
+      version: "microservices-v1",
       timestamp: new Date().toISOString(),
       dependencies,
     };
