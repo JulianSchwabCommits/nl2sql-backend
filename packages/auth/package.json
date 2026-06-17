@@ -1,0 +1,33 @@
+{
+  "name": "@nl2sql/auth",
+  "version": "0.0.1",
+  "description": "Shared authentication for nl2sql microservices: JWT guards, Public decorator, and the service-to-service InternalGuard",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/websockets": "^11.1.21",
+    "reflect-metadata": "^0.2.2",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/websockets": "^11.1.21",
+    "socket.io": "^4.8.3",
+    "typescript": "^5.7.3"
+  }
+}

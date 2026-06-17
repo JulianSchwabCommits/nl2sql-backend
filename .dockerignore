@@ -1,9 +1,18 @@
-node_modules
-dist
+# Keep build contexts small and free of stale build artifacts. Patterns use **/
+# so they match inside every workspace (packages/*, core, agent, database).
+**/node_modules
+**/dist
+**/*.tsbuildinfo
 .git
 .gitignore
+.github
 .env
+**/.env
+*.md
+**/*.md
 data/*.json
 data/*.zip
-*.md
-*.tsbuildinfo
+**/data/*.json
+**/data/*.zip
+terraform
+test-*.mjs

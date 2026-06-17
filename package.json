@@ -5,7 +5,18 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "workspaces": [
+    "packages/*",
+    "database",
+    "core",
+    "agent"
+  ],
   "scripts": {
+    "build:shared": "npm run build -w @nl2sql/logger && npm run build -w @nl2sql/auth",
+    "build:database": "npm run build:shared && npm run build -w @nl2sql/database",
+    "build:core": "npm run build:shared && npm run build -w @nl2sql/core",
+    "build:agent": "npm run build:shared && npm run build -w @nl2sql/agent",
+    "build:all": "npm run build:shared && npm run build -w @nl2sql/database && npm run build -w @nl2sql/core && npm run build -w @nl2sql/agent",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",

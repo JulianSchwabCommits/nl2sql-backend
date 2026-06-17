@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+  // Three levels up lands in the workspace-hoisted node_modules (/app/node_modules)
+  // so the generated client is picked up by `COPY /app/node_modules` in the
+  // Dockerfile, exactly like the default Food client in the database service.
+  output   = "../../../node_modules/.prisma/auth-client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  email          String   @unique
+  password       String
+  name           String?
+  role           Role     @default(USER)
+  approved       Boolean  @default(false)
+  refreshToken   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}

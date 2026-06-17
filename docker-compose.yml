@@ -1,43 +1,130 @@
+
+# Topology
+#
+#   browser ──▶ api-gateway (host :3000) ──┬─▶ core     (:3000)  /auth/*  /admin/*
+#                                          ├─▶ agent    (:3001)  /agent/* /socket.io/*
+#                                          └─(agent)──▶ database (:3002)  /internal/*
 services:
-  app:
+  api-gateway:
     build:
-      context: .
-      dockerfile: Dockerfile
-      target: runner
+      context: ./api-gateway
     restart: unless-stopped
     ports:
-      - '3000:3000'
-    volumes:
-      - ./data:/app/data
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      AUTH_DATABASE_URL: ${AUTH_DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      CORS_ORIGIN: ${CORS_ORIGIN}
-      NODE_ENV: production
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      - '3000:80'
+    depends_on:
+      - core
+      - agent
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://127.0.0.1:80/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  core:
+    build:
+      context: .
+      dockerfile: core/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PORT: 3000
+      AUTH_DATABASE_URL: ${AUTH_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS}
+      ACCESS_TOKEN_TTL_SEC: ${ACCESS_TOKEN_TTL_SEC}
+      REFRESH_TOKEN_TTL_SEC: ${REFRESH_TOKEN_TTL_SEC}
+      ADMIN_TOKEN_TTL_SEC: ${ADMIN_TOKEN_TTL_SEC}
+      THROTTLE_SHORT_TTL_MS: ${THROTTLE_SHORT_TTL_MS}
+      THROTTLE_SHORT_LIMIT: ${THROTTLE_SHORT_LIMIT}
+      THROTTLE_LONG_TTL_MS: ${THROTTLE_LONG_TTL_MS}
+      THROTTLE_LONG_LIMIT: ${THROTTLE_LONG_LIMIT}
+      # has to be seeded first: npm run seed:admin
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - ./rds-combined-ca-bundle.pem:/app/certs/rds-combined-ca-bundle.pem:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3000/health']
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 40s
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
+
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - core
+      - database
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PORT: 3001
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      AGENT_MAX_ROWS: ${AGENT_MAX_ROWS}
+      AGENT_MAX_TOOL_ITERATIONS: ${AGENT_MAX_TOOL_ITERATIONS}
+      AGENT_MAX_REQUESTS_PER_DAY: ${AGENT_MAX_REQUESTS_PER_DAY}
+      AGENT_RATE_LIMIT_WINDOW_MS: ${AGENT_RATE_LIMIT_WINDOW_MS}
+      AGENT_MAX_HISTORY_MESSAGES: ${AGENT_MAX_HISTORY_MESSAGES}
+      DEFAULT_HISTORY_LIMIT: ${DEFAULT_HISTORY_LIMIT}
+      OPENAI_MODEL: ${OPENAI_MODEL}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+      CORE_SERVICE_URL: http://core:3000
+      DATABASE_SERVICE_URL: http://database:3002
+    networks:
+      - backend
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3001/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  database:
+    build:
+      context: .
+      dockerfile: database/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PORT: 3002
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      MAX_MESSAGES_PER_CONVERSATION: ${MAX_MESSAGES_PER_CONVERSATION}
+      DEFAULT_HISTORY_LIMIT: ${DEFAULT_HISTORY_LIMIT}
+      REDIS_RETRY_STEP_MS: ${REDIS_RETRY_STEP_MS}
+      REDIS_RETRY_MAX_MS: ${REDIS_RETRY_MAX_MS}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - ./rds-combined-ca-bundle.pem:/app/certs/rds-combined-ca-bundle.pem:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3002/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
 networks:
   backend:
