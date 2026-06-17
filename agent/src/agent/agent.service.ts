@@ -202,19 +202,21 @@ export class AgentService {
     };
   }
 
-  private async checkRateLimit(userId: string): Promise<boolean> {
+  private async checkRateLimit(
+    userId: string,
+  ): Promise<'ok' | 'over_quota' | 'unavailable'> {
     try {
       const { allowed } = await this.dataClient.checkRateLimit(
         userId,
         this.cfg.maxRequestsPerDay,
         this.cfg.rateLimitWindowMs,
       );
-      return allowed;
+      return allowed ? 'ok' : 'over_quota';
     } catch (error: any) {
-      this.logger.warn(
-        `Rate limit check unavailable, allowing request: ${error.message}`,
+      this.logger.error(
+        `Rate limit check failed, denying request: ${error.message}`,
       );
-      return true;
+      return 'unavailable';
     }
   }
 

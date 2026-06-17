@@ -15,7 +15,7 @@ export const requireInt = (name: string): number => {
   return parsed;
 };
 
-const requireStr = (name: string): string => {
+export const requireStr = (name: string): string => {
   const raw = process.env[name];
   if (raw === undefined || raw === '') {
     throw new Error(`Missing required environment variable: ${name}`);

@@ -33,6 +33,9 @@ export class RedisService {
     private readonly cfg: ConfigType<typeof databaseConfig>,
   ) {}
 
+  isHealthy(): boolean {
+    return this.client.status === 'ready';
+  }
 
   private conversationKey(userId: number, conversationId: string): string {
     return `user:${userId}:conversation:${conversationId}`;

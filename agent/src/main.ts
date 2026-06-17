@@ -21,14 +21,13 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173')
+    origin: requireStr('CORS_ORIGIN')
       .split(',')
       .map((o) => o.trim()),
     credentials: true,
   });
 
-  const config = app.get(ConfigService);
-  const port = config.get<number>('PORT', 3001);
+  const port = requireInt('PORT');
 
   await app.listen(port);
 }
