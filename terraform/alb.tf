@@ -88,6 +88,20 @@ resource "aws_lb_listener" "http" {
   }
 }
 
+resource "aws_lb_listener_rule" "health" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 5
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.core.arn
+  }
+
+  condition {
+    path_pattern { values = ["/health"] }
+  }
+}
+
 resource "aws_lb_listener_rule" "auth" {
   listener_arn = aws_lb_listener.http.arn
   priority     = 10
@@ -164,6 +178,21 @@ resource "aws_lb_listener" "https" {
       message_body = "Not Found"
       status_code  = "404"
     }
+  }
+}
+
+resource "aws_lb_listener_rule" "health_https" {
+  count        = var.acm_certificate_arn != "" ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 5
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.core.arn
+  }
+
+  condition {
+    path_pattern { values = ["/health"] }
   }
 }
 
