@@ -10,6 +10,7 @@ import { AuthService } from "../src/auth/auth.service";
 import { AuthGuard } from "../src/auth/guards/auth.guard";
 import { RefreshGuard } from "../src/auth/guards/refresh.guard";
 import { AuthDatabaseService } from "../src/auth-database";
+import { NotificationService } from "../src/auth/notification.service";
 import coreConfig from "../src/config/core.config";
 
 // In-memory user store for testing
@@ -128,6 +129,12 @@ describe("Auth E2E", () => {
         {
           provide: "PinoLogger:AuthService",
           useValue: mockLogger,
+        },
+        {
+          provide: NotificationService,
+          useValue: {
+            notifyRegistration: jest.fn(),
+          },
         },
       ],
     }).compile();

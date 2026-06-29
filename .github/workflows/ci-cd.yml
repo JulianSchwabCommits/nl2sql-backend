@@ -1,57 +1,19 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# CI/CD Pipeline — nl2sql-backend microservices monorepo
-#
-# Architecture:
-#   ALB ──► core     (NestJS)  ──► [auth DB]
-#       ──► agent    (NestJS)  ──► database (NestJS) ──► [food DB]
-#
-# Shared packages: @nl2sql/auth, @nl2sql/logger  (used by core, agent, database)
-#
-# Change-detection logic:
-#   - Only the services whose files actually changed are built and deployed.
-#   - Shared-package or root-config changes trigger core + agent + database.
-#   - workflow_dispatch always deploys every service.
-#
-# Required GitHub Secrets:
-#   Shared:       AWS_ROLE_ARN, AWS_REGION, ECS_CLUSTER_NAME
-#   Per service:  ECR_REPO_<SVC>, ECS_SERVICE_<SVC>, ECS_TASK_DEF_<SVC>
-#                 where <SVC> = CORE | AGENT | DATABASE
-# ─────────────────────────────────────────────────────────────────────────────
 name: CI/CD Pipeline
 
 on:
   push:
-    branches: [develop]
-    paths:
-      - "core/**"
-      - "agent/**"
-      - "database/**"
-      - "packages/**"
-      - "test/**"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig*.json"
-      - "jest.config.js"
-      - ".github/workflows/ci-cd.yml"
-  pull_request:
     branches: [develop, main]
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
   packages: write
 
-# ─────────────────────────────────────────────────────────────────────────────
 jobs:
-  # ── 1. Detect which services changed ───────────────────────────
   changes:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
-      core: ${{ steps.eval.outputs.core }}
-      agent: ${{ steps.eval.outputs.agent }}
-      database: ${{ steps.eval.outputs.database }}
       services: ${{ steps.matrix.outputs.services }}
       has_deployable: ${{ steps.matrix.outputs.has_deployable }}
     steps:
@@ -76,49 +38,24 @@ jobs:
             database:
               - 'database/**'
 
-      - name: Evaluate per-service flags
-        id: eval
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "core=true"     >> "$GITHUB_OUTPUT"
-            echo "agent=true"    >> "$GITHUB_OUTPUT"
-            echo "database=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          SHARED="${{ steps.filter.outputs.shared }}"
-
-          # Node services rebuild when shared packages / root configs change
-          if [[ "$SHARED" == "true" || "${{ steps.filter.outputs.core }}" == "true" ]]; then
-            echo "core=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "core=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [[ "$SHARED" == "true" || "${{ steps.filter.outputs.agent }}" == "true" ]]; then
-            echo "agent=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "agent=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [[ "$SHARED" == "true" || "${{ steps.filter.outputs.database }}" == "true" ]]; then
-            echo "database=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "database=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build deployment matrix
         id: matrix
         run: |
+          DISPATCH="${{ github.event_name == 'workflow_dispatch' }}"
+          SHARED="${{ steps.filter.outputs.shared }}"
           MATRIX="[]"
 
-          if [[ "${{ steps.eval.outputs.core }}" == "true" ]]; then
+          should_build() {
+            [[ "$DISPATCH" == "true" || "$SHARED" == "true" || "$1" == "true" ]]
+          }
+
+          if should_build "${{ steps.filter.outputs.core }}"; then
             MATRIX=$(echo "$MATRIX" | jq -c '. + [{"service":"core","dockerfile":"core/Dockerfile","context":"."}]')
           fi
-          if [[ "${{ steps.eval.outputs.agent }}" == "true" ]]; then
+          if should_build "${{ steps.filter.outputs.agent }}"; then
             MATRIX=$(echo "$MATRIX" | jq -c '. + [{"service":"agent","dockerfile":"agent/Dockerfile","context":"."}]')
           fi
-          if [[ "${{ steps.eval.outputs.database }}" == "true" ]]; then
+          if should_build "${{ steps.filter.outputs.database }}"; then
             MATRIX=$(echo "$MATRIX" | jq -c '. + [{"service":"database","dockerfile":"database/Dockerfile","context":"."}]')
           fi
 
@@ -130,95 +67,10 @@ jobs:
             echo "services={\"include\":$MATRIX}" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "### Changed services" >> "$GITHUB_STEP_SUMMARY"
-          echo "$MATRIX" | jq -r '.[] | "- \(.service)"' >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "- (none)" >> "$GITHUB_STEP_SUMMARY"
-
-  # ── 2. Test & Lint ─────────────────────────────────────────────
-  test:
-    name: Test & Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate Prisma clients
-        env:
-          AUTH_DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
-          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
-        run: |
-          npm run prisma:generate -w @nl2sql/core
-          npm run prisma:generate -w @nl2sql/database
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Run tests
-        env:
-          AUTH_DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
-          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
-          BCRYPT_ROUNDS: "10"
-          ACCESS_TOKEN_TTL_SEC: "900"
-          REFRESH_TOKEN_TTL_SEC: "604800"
-          ADMIN_TOKEN_TTL_SEC: "14400"
-          THROTTLE_SHORT_TTL_MS: "60000"
-          THROTTLE_SHORT_LIMIT: "10"
-          THROTTLE_LONG_TTL_MS: "600000"
-          THROTTLE_LONG_LIMIT: "100"
-          ALERT_WEBHOOK_URL: "https://ci.test/webhook"
-          ALERT_WEBHOOK_USERNAME: "ci"
-          ALERT_WEBHOOK_PASSWORD: "ci"
-          ALERT_WEBHOOK_PATH: "/alert"
-          JWT_SECRET: "ci-jwt-secret-for-testing-only"
-          ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-        run: npx jest --passWithNoTests --forceExit
-
-      - name: Run test coverage
-        env:
-          AUTH_DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
-          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
-          BCRYPT_ROUNDS: "10"
-          ACCESS_TOKEN_TTL_SEC: "900"
-          REFRESH_TOKEN_TTL_SEC: "604800"
-          ADMIN_TOKEN_TTL_SEC: "14400"
-          THROTTLE_SHORT_TTL_MS: "60000"
-          THROTTLE_SHORT_LIMIT: "10"
-          THROTTLE_LONG_TTL_MS: "600000"
-          THROTTLE_LONG_LIMIT: "100"
-          ALERT_WEBHOOK_URL: "https://ci.test/webhook"
-          ALERT_WEBHOOK_USERNAME: "ci"
-          ALERT_WEBHOOK_PASSWORD: "ci"
-          ALERT_WEBHOOK_PATH: "/alert"
-          JWT_SECRET: "ci-jwt-secret-for-testing-only"
-          ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-        run: npx jest --coverage --passWithNoTests --forceExit
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        if: success()
-        with:
-          files: ./coverage/lcov.info
-          flags: backend
-          name: backend-coverage
-        continue-on-error: true
-
-  # ── 3. Build & Deploy (per changed service) ────────────────────
-  build-deploy:
-    name: "Deploy: ${{ matrix.service }}"
-    needs: [test, changes]
-    if: |
-      needs.changes.outputs.has_deployable == 'true' &&
-      (
-        (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
-        github.event_name == 'workflow_dispatch'
-      )
+  push-ghcr:
+    name: "GHCR: ${{ matrix.service }}"
+    needs: [changes]
+    if: needs.changes.outputs.has_deployable == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -227,61 +79,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── Map service name → secret values ──
-      - name: Resolve service config
-        id: config
-        run: |
-          case "${{ matrix.service }}" in
-            core)
-              echo "ecr_repo=${{ secrets.ECR_REPO_CORE }}"         >> "$GITHUB_OUTPUT"
-              echo "ecs_service=${{ secrets.ECS_SERVICE_CORE }}"    >> "$GITHUB_OUTPUT"
-              echo "ecs_task_def=${{ secrets.ECS_TASK_DEF_CORE }}"  >> "$GITHUB_OUTPUT"
-              echo "container=core"                                 >> "$GITHUB_OUTPUT"
-              ;;
-            agent)
-              echo "ecr_repo=${{ secrets.ECR_REPO_AGENT }}"        >> "$GITHUB_OUTPUT"
-              echo "ecs_service=${{ secrets.ECS_SERVICE_AGENT }}"   >> "$GITHUB_OUTPUT"
-              echo "ecs_task_def=${{ secrets.ECS_TASK_DEF_AGENT }}" >> "$GITHUB_OUTPUT"
-              echo "container=agent"                                >> "$GITHUB_OUTPUT"
-              ;;
-            database)
-              echo "ecr_repo=${{ secrets.ECR_REPO_DATABASE }}"        >> "$GITHUB_OUTPUT"
-              echo "ecs_service=${{ secrets.ECS_SERVICE_DATABASE }}"   >> "$GITHUB_OUTPUT"
-              echo "ecs_task_def=${{ secrets.ECS_TASK_DEF_DATABASE }}" >> "$GITHUB_OUTPUT"
-              echo "container=database"                                >> "$GITHUB_OUTPUT"
-              ;;
-          esac
-
       - name: Set image tag
         id: vars
-        run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+        run: echo "short_sha=$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
-      # ── Docker build & push ──
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.login-ecr.outputs.registry }}/${{ steps.config.outputs.ecr_repo }}
+          images: ghcr.io/${{ github.repository }}-${{ matrix.service }}
           tags: |
             type=raw,value=${{ steps.vars.outputs.short_sha }}
             type=raw,value=latest
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Build and push to ECR
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
@@ -293,95 +113,3 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.service }},mode=max
           provenance: false
           sbom: false
-
-      # ── GHCR push ──
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: GHCR metadata
-        id: ghcr-meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}-${{ matrix.service }}
-          tags: |
-            type=raw,value=${{ steps.vars.outputs.short_sha }}
-            type=raw,value=latest
-
-      - name: Build and push to GHCR
-        uses: docker/build-push-action@v5
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          push: true
-          tags: ${{ steps.ghcr-meta.outputs.tags }}
-          labels: ${{ steps.ghcr-meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          provenance: false
-          sbom: false
-
-      # ── ECS deploy ──
-      - name: Download current task definition
-        run: |
-          aws ecs describe-task-definition \
-            --task-definition "${{ steps.config.outputs.ecs_task_def }}" \
-            --query taskDefinition > task-definition.json
-
-      - name: Render new image into task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-definition.json
-          container-name: ${{ steps.config.outputs.container }}
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ steps.config.outputs.ecr_repo }}:${{ steps.vars.outputs.short_sha }}
-
-      - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ steps.config.outputs.ecs_service }}
-          cluster: ${{ secrets.ECS_CLUSTER_NAME }}
-          wait-for-service-stability: true
-          wait-for-minutes: 10
-
-      - name: Deployment summary
-        run: |
-          echo "### ${{ matrix.service }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Image:** \`${{ steps.vars.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Service:** \`${{ steps.config.outputs.ecs_service }}\`" >> "$GITHUB_STEP_SUMMARY"
-
-  # ── 4. Pipeline Summary ────────────────────────────────────────
-  summary:
-    name: Pipeline Summary
-    runs-on: ubuntu-latest
-    needs: [test, changes, build-deploy]
-    if: always()
-    steps:
-      - name: Results
-        run: |
-          echo "## CI/CD Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Stage | Result |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Test & Lint | \`${{ needs.test.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Changes     | core=${{ needs.changes.outputs.core }}, agent=${{ needs.changes.outputs.agent }}, database=${{ needs.changes.outputs.database }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Build/Deploy| \`${{ needs.build-deploy.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
-
-          if [[ "${{ needs.test.result }}" == "failure" ]]; then
-            echo ""
-            echo "Tests failed — pipeline stopped."
-            exit 1
-          elif [[ "${{ needs.build-deploy.result }}" == "failure" ]]; then
-            echo ""
-            echo "One or more deployments failed."
-            exit 1
-          elif [[ "${{ needs.build-deploy.result }}" == "skipped" ]]; then
-            echo ""
-            echo "No services to deploy (PR or no changes)."
-          else
-            echo ""
-            echo "All stages completed successfully."
-          fi

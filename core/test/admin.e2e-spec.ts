@@ -7,6 +7,7 @@ import cookieParser from "cookie-parser";
 import * as bcrypt from "bcrypt";
 import { AdminController } from "../src/admin/admin.controller";
 import { AuthDatabaseService } from "../src/auth-database";
+import { ConnectionsService } from "../src/connections";
 import coreConfig from "../src/config/core.config";
 
 // In-memory user store
@@ -128,6 +129,12 @@ describe("Admin E2E", () => {
         {
           provide: "PinoLogger:AdminController",
           useValue: mockLogger,
+        },
+        {
+          provide: ConnectionsService,
+          useValue: {
+            createDefaultConnection: jest.fn(),
+          },
         },
       ],
     }).compile();
