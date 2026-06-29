@@ -135,7 +135,7 @@ export class OpenAIService {
     this.tools = buildTools(cfg.maxRows);
   }
 
-  async getSystemPrompt(): Promise<string> {
+  getSystemPrompt(): string {
     if (this.systemPrompt) {
       return this.systemPrompt;
     }
@@ -160,7 +160,7 @@ export class OpenAIService {
         'OPENAI_API_KEY is not configured on the server',
       );
     }
-    const systemPrompt = await this.getSystemPrompt();
+    const systemPrompt = this.getSystemPrompt();
     const openaiMessages = this.buildMessages(messages, systemPrompt);
     try {
       const response = await fetch(this.baseUrl, {

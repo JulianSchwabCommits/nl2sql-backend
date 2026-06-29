@@ -56,7 +56,7 @@ export class AuthService {
       'user signed up (pending approval)',
     );
 
-    this.notification.notifyRegistration(dto.name || dto.email);
+    void this.notification.notifyRegistration(dto.name || dto.email);
 
     return {
       message:
