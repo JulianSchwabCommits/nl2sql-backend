@@ -161,9 +161,43 @@ jobs:
         run: npm run lint
 
       - name: Run tests
+        env:
+          AUTH_DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+          BCRYPT_ROUNDS: "10"
+          ACCESS_TOKEN_TTL_SEC: "900"
+          REFRESH_TOKEN_TTL_SEC: "604800"
+          ADMIN_TOKEN_TTL_SEC: "14400"
+          THROTTLE_SHORT_TTL_MS: "60000"
+          THROTTLE_SHORT_LIMIT: "10"
+          THROTTLE_LONG_TTL_MS: "600000"
+          THROTTLE_LONG_LIMIT: "100"
+          ALERT_WEBHOOK_URL: "https://ci.test/webhook"
+          ALERT_WEBHOOK_USERNAME: "ci"
+          ALERT_WEBHOOK_PASSWORD: "ci"
+          ALERT_WEBHOOK_PATH: "/alert"
+          JWT_SECRET: "ci-jwt-secret-for-testing-only"
+          ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         run: npx jest --passWithNoTests --forceExit
 
       - name: Run test coverage
+        env:
+          AUTH_DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+          BCRYPT_ROUNDS: "10"
+          ACCESS_TOKEN_TTL_SEC: "900"
+          REFRESH_TOKEN_TTL_SEC: "604800"
+          ADMIN_TOKEN_TTL_SEC: "14400"
+          THROTTLE_SHORT_TTL_MS: "60000"
+          THROTTLE_SHORT_LIMIT: "10"
+          THROTTLE_LONG_TTL_MS: "600000"
+          THROTTLE_LONG_LIMIT: "100"
+          ALERT_WEBHOOK_URL: "https://ci.test/webhook"
+          ALERT_WEBHOOK_USERNAME: "ci"
+          ALERT_WEBHOOK_PASSWORD: "ci"
+          ALERT_WEBHOOK_PATH: "/alert"
+          JWT_SECRET: "ci-jwt-secret-for-testing-only"
+          ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         run: npx jest --coverage --passWithNoTests --forceExit
 
       - name: Upload coverage
