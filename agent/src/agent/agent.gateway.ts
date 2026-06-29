@@ -10,7 +10,7 @@ import {
 import { UseGuards } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { Server, Socket } from 'socket.io';
-import { AgentService } from './agent.service';
+import { AgentService, ToolCallEvent } from './agent.service';
 import { DataClientService } from '../data-client/data-client.service';
 import { WsJwtApprovalGuard } from './guards/ws-jwt-approval.guard';
 import { AgentMessage, ChatExchange, ChatMessage } from '../types';
@@ -80,6 +80,12 @@ export class AgentGateway
       'agent chat request',
     );
 
+    client.emit('agent:thinking', { conversationId });
+
+    const onToolCall = (event: ToolCallEvent) => {
+      client.emit('agent:tool_call', { ...event, conversationId });
+    };
+
     try {
       let conv = await this.dataClient.getConversation(userId, conversationId);
       if (!conv) {
@@ -118,6 +124,7 @@ export class AgentGateway
         history,
         userId.toString(),
         client.id,
+        onToolCall,
       );
 
       if (result.error === 'cancelled') {

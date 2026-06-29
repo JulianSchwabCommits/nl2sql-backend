@@ -13,10 +13,30 @@ import {
   Conversation,
 } from '../types';
 
+export interface ConnectionCredentials {
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+  ssl: boolean;
+}
+
+export interface ConnectionInfo {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  ssl: boolean;
+}
+
 @Injectable()
 export class DataClientService {
   private readonly logger = new Logger(DataClientService.name);
   private readonly baseUrl: string;
+  private readonly coreUrl: string;
   private readonly internalKey: string;
 
   constructor(
@@ -27,9 +47,46 @@ export class DataClientService {
     this.baseUrl = this.config
       .getOrThrow<string>('DATABASE_SERVICE_URL')
       .replace(/\/$/, '');
+    this.coreUrl = this.config
+      .getOrThrow<string>('CORE_SERVICE_URL')
+      .replace(/\/$/, '');
     this.internalKey = this.config.getOrThrow<string>('INTERNAL_API_KEY');
   }
 
+  async listUserConnections(userId: number): Promise<ConnectionInfo[]> {
+    return this.request('GET', `/internal/connections/user/${userId}`, undefined, this.coreUrl);
+  }
+
+  async getConnectionCredentials(connectionId: string): Promise<ConnectionCredentials & { id: string; name: string }> {
+    return this.request('GET', `/internal/connections/${connectionId}/credentials`, undefined, this.coreUrl);
+  }
+
+  async getSchemaForConnection(credentials: ConnectionCredentials): Promise<string> {
+    const data = await this.request<{ schema: string }>(
+      'POST',
+      '/internal/schema',
+      { credentials },
+    );
+    return data.schema;
+  }
+
+  async executeReadWithCredentials(sql: string, credentials: ConnectionCredentials): Promise<any[]> {
+    const data = await this.request<{ rows: any[]; rowCount: number }>(
+      'POST',
+      '/internal/query/read',
+      { sql, credentials },
+    );
+    return data.rows;
+  }
+
+  async executeWriteWithCredentials(sql: string, credentials: ConnectionCredentials): Promise<number> {
+    const data = await this.request<{ affectedRows: number }>(
+      'POST',
+      '/internal/query/write',
+      { sql, credentials },
+    );
+    return data.affectedRows;
+  }
 
   async getSchema(): Promise<string> {
     const data = await this.request<{ schema: string }>(
@@ -144,10 +201,12 @@ export class DataClientService {
     method: string,
     path: string,
     body?: unknown,
+    baseUrlOverride?: string,
   ): Promise<T> {
+    const base = baseUrlOverride || this.baseUrl;
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await fetch(`${base}${path}`, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -156,7 +215,7 @@ export class DataClientService {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
     } catch (error: any) {
-      this.logger.error(`database-service unreachable: ${error.message}`);
+      this.logger.error(`service unreachable (${base}): ${error.message}`);
       throw new InternalServerErrorException(
         'Data layer is currently unavailable',
       );
@@ -165,10 +224,10 @@ export class DataClientService {
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       this.logger.error(
-        `database-service ${method} ${path} -> ${response.status}: ${text}`,
+        `${method} ${base}${path} -> ${response.status}: ${text}`,
       );
       throw new InternalServerErrorException(
-        `Data layer returned status ${response.status}`,
+        `Service returned status ${response.status}`,
       );
     }
 

@@ -1,0 +1,21 @@
+services:
+  sakila-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sakila
+      POSTGRES_PASSWORD: sakila
+      POSTGRES_DB: sakila
+    ports:
+      - '5434:5432'
+    volumes:
+      - sakila-db-data:/var/lib/postgresql/data
+      - ./sakila-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sakila -d sakila']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  sakila-db-data:

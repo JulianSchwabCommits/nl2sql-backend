@@ -12,6 +12,8 @@ import { AuthDatabaseModule } from './auth-database';
 import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin';
 import { InternalModule } from './internal/internal.module';
+import { CryptoModule } from './crypto';
+import { ConnectionsModule } from './connections';
 
 
 const REQUIRED_ENV = [
@@ -19,6 +21,13 @@ const REQUIRED_ENV = [
   'JWT_SECRET',
   'JWT_REFRESH_SECRET',
   'INTERNAL_API_KEY',
+  'DB_ENCRYPTION_KEY',
+  'DATABASE_SERVICE_URL',
+  'DEFAULT_DATABASE_HOST',
+  'DEFAULT_DATABASE_PORT',
+  'DEFAULT_DATABASE_DB',
+  'DEFAULT_DATABASE_USERNAME',
+  'DEFAULT_DATABASE_PASSWORD',
 ];
 
 @Module({
@@ -53,6 +62,8 @@ const REQUIRED_ENV = [
       ],
     }),
     AuthDatabaseModule,
+    CryptoModule,
+    ConnectionsModule,
     AuthModule,
     AdminModule,
     InternalModule,

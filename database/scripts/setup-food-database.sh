@@ -17,7 +17,7 @@ if [ -f "$FOOD_DATA_FILE" ]; then
     echo "Food data file already exists: $FOOD_DATA_FILE"
 else
     echo "Downloading USDA FoodData Central dataset..."
-    wget -O "$FOOD_DATA_ZIP" "$FOOD_DATA_URL"
+    wget --header="User-Agent: Mozilla/5.0" -O "$FOOD_DATA_ZIP" "$FOOD_DATA_URL"
 
     echo "Extracting food data..."
     unzip -o "$FOOD_DATA_ZIP"

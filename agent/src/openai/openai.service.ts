@@ -1,108 +1,114 @@
 import {
-  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
+  Inject,
 } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { DataClientService } from '../data-client/data-client.service';
 import agentConfig from '../config/agent.config';
 import { AgentMessage } from '../types';
 
 function buildTools(maxRows: number) {
   return [
-  {
-    type: 'function',
-    function: {
-      name: 'get',
-      description: `Execute a SELECT SQL query on the PostgreSQL database and return the results. Maximum ${maxRows} rows are returned.`,
-      parameters: {
-        type: 'object',
-        properties: {
-          sql: {
-            type: 'string',
-            description: 'A valid PostgreSQL SELECT query',
-          },
+    {
+      type: 'function',
+      function: {
+        name: 'list_databases',
+        description: 'List all databases available to the current user.',
+        parameters: {
+          type: 'object',
+          properties: {},
+          required: [],
         },
-        required: ['sql'],
       },
     },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create',
-      description:
-        'Execute an INSERT SQL query on the PostgreSQL database to create new records.',
-      parameters: {
-        type: 'object',
-        properties: {
-          sql: {
-            type: 'string',
-            description: 'A valid PostgreSQL INSERT query',
+    {
+      type: 'function',
+      function: {
+        name: 'get_database_schema',
+        description:
+          'Get the full schema (all tables, columns, constraints) of a specific database. Always call this before writing queries.',
+        parameters: {
+          type: 'object',
+          properties: {
+            connectionId: {
+              type: 'string',
+              description: 'The ID of the database connection to inspect',
+            },
           },
+          required: ['connectionId'],
         },
-        required: ['sql'],
       },
     },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'update',
-      description:
-        'Execute an UPDATE SQL query on the PostgreSQL database to modify existing records.',
-      parameters: {
-        type: 'object',
-        properties: {
-          sql: {
-            type: 'string',
-            description: 'A valid PostgreSQL UPDATE query',
+    {
+      type: 'function',
+      function: {
+        name: 'read_query',
+        description: `Execute a SELECT SQL query on a specific database. Maximum ${maxRows} rows returned.`,
+        parameters: {
+          type: 'object',
+          properties: {
+            connectionId: {
+              type: 'string',
+              description: 'The ID of the database connection to query',
+            },
+            sql: {
+              type: 'string',
+              description: 'A valid PostgreSQL SELECT query',
+            },
           },
+          required: ['connectionId', 'sql'],
         },
-        required: ['sql'],
       },
     },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'delete',
-      description:
-        'Execute a DELETE SQL query on the PostgreSQL database to remove records.',
-      parameters: {
-        type: 'object',
-        properties: {
-          sql: {
-            type: 'string',
-            description: 'A valid PostgreSQL DELETE query',
+    {
+      type: 'function',
+      function: {
+        name: 'write_query',
+        description:
+          'Execute an INSERT, UPDATE, or DELETE SQL query on a specific database.',
+        parameters: {
+          type: 'object',
+          properties: {
+            connectionId: {
+              type: 'string',
+              description: 'The ID of the database connection to write to',
+            },
+            sql: {
+              type: 'string',
+              description: 'A valid PostgreSQL INSERT, UPDATE, or DELETE query',
+            },
+            operation: {
+              type: 'string',
+              enum: ['INSERT', 'UPDATE', 'DELETE'],
+              description: 'The type of write operation',
+            },
           },
+          required: ['connectionId', 'sql', 'operation'],
         },
-        required: ['sql'],
       },
     },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'stop',
-      description:
-        'Stop the tool loop and return a final message to the user. Use this when you have the answer ready or need to communicate something without executing more queries.',
-      parameters: {
-        type: 'object',
-        properties: {
-          message: {
-            type: 'string',
-            description:
-              'The final response message to show to the user. Include the SQL query you used and a summary of the results.',
+    {
+      type: 'function',
+      function: {
+        name: 'stop',
+        description:
+          'Stop the tool loop and return a final message to the user. Use this when you have the answer ready or need to communicate something without executing more queries.',
+        parameters: {
+          type: 'object',
+          properties: {
+            message: {
+              type: 'string',
+              description:
+                'The final response message to show to the user. Include the SQL query you used and a summary of the results.',
+            },
           },
+          required: ['message'],
         },
-        required: ['message'],
       },
     },
-  },
   ];
 }
 
@@ -121,7 +127,6 @@ export class OpenAIService {
   private systemPrompt: string | null = null;
 
   constructor(
-    private readonly dataClient: DataClientService,
     @Inject(agentConfig.KEY)
     private readonly cfg: ConfigType<typeof agentConfig>,
   ) {
@@ -130,8 +135,6 @@ export class OpenAIService {
     this.tools = buildTools(cfg.maxRows);
   }
 
-  // The schema is fetched from the database service once and cached into the
-  // prompt template's {schema} placeholder.
   async getSystemPrompt(): Promise<string> {
     if (this.systemPrompt) {
       return this.systemPrompt;
@@ -142,10 +145,8 @@ export class OpenAIService {
         'data',
         'system-prompt.txt',
       );
-      const template = fs.readFileSync(templatePath, 'utf-8');
-      const schema = await this.dataClient.getSchema();
-      this.systemPrompt = template.replace('{schema}', schema);
-      this.logger.log('System prompt loaded with database schema');
+      this.systemPrompt = fs.readFileSync(templatePath, 'utf-8');
+      this.logger.log('System prompt loaded');
     } catch (error: any) {
       this.logger.error(`Failed to load system prompt: ${error.message}`);
       return 'You are a helpful SQL assistant.';
@@ -221,8 +222,6 @@ export class OpenAIService {
     }
   }
 
-  // Translates the agent's internal message log into OpenAI chat-completions
-  // format (system + user/assistant/tool turns).
   private buildMessages(
     messages: AgentMessage[],
     systemPrompt: string,

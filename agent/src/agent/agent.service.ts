@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { OpenAIService } from '../openai/openai.service';
-import { DataClientService } from '../data-client/data-client.service';
+import { DataClientService, ConnectionCredentials } from '../data-client/data-client.service';
 import agentConfig from '../config/agent.config';
 import { AgentMessage, AgentResult, QueryRecord } from '../types';
 
@@ -11,6 +11,14 @@ interface WriteResult {
   error?: string;
 }
 
+export interface ToolCallEvent {
+  tool: string;
+  args?: Record<string, any>;
+  status: 'started' | 'completed';
+  result?: Record<string, any>;
+}
+
+export type OnToolCall = (event: ToolCallEvent) => void;
 
 @Injectable()
 export class AgentService {
@@ -40,6 +48,7 @@ export class AgentService {
     history: AgentMessage[] = [],
     userId?: string,
     clientId?: string,
+    onToolCall?: OnToolCall,
   ): Promise<AgentResult> {
     if (userId) {
       const limit = await this.checkRateLimit(userId);
@@ -65,22 +74,27 @@ export class AgentService {
     this.activeRequests.set(requestKey, abortController);
 
     try {
+      if (!userId) {
+        throw new Error("No userid");
+      }
       return await this.executeAgentLoop(
         message,
         history,
         abortController.signal,
+        parseInt(userId, 10),
+        onToolCall,
       );
     } finally {
       this.activeRequests.delete(requestKey);
     }
   }
 
-  // main loop: ask the model -> run the tool it picks -> feed the result back
-  // repeat until the model calls "stop" or we hit a guardrail.
   private async executeAgentLoop(
     message: string,
     history: AgentMessage[],
     signal: AbortSignal,
+    userId: number,
+    onToolCall?: OnToolCall,
   ): Promise<AgentResult> {
     const trimmedHistory = history.slice(-this.cfg.maxHistoryMessages);
     const conversation: AgentMessage[] = [
@@ -90,6 +104,7 @@ export class AgentService {
 
     let iterations = 0;
     const queries: QueryRecord[] = [];
+    const credentialsCache = new Map<string, ConnectionCredentials>();
 
     while (iterations < this.cfg.maxToolIterations) {
       iterations++;
@@ -114,6 +129,8 @@ export class AgentService {
       const { name, args } = response.functionCall;
       this.logger.log(`Tool call: ${name}(${JSON.stringify(args)})`);
 
+      onToolCall?.({ tool: name, args, status: 'started' });
+
       conversation.push({
         role: 'model',
         content: '',
@@ -123,9 +140,28 @@ export class AgentService {
       let toolResult: Record<string, any>;
       try {
         switch (name) {
-          case 'get': {
+          case 'list_databases': {
+            const connections = await this.dataClient.listUserConnections(userId);
+            toolResult = {
+              databases: connections.map((c) => ({
+                id: c.id,
+                name: c.name,
+                host: c.host,
+                database: c.database,
+              })),
+            };
+            break;
+          }
+          case 'get_database_schema': {
+            const credentials = await this.resolveCredentials(args.connectionId, credentialsCache);
+            const schema = await this.dataClient.getSchemaForConnection(credentials);
+            toolResult = { schema };
+            break;
+          }
+          case 'read_query': {
+            const credentials = await this.resolveCredentials(args.connectionId, credentialsCache);
             const sql = this.enforceLimitOnSelect(args.sql);
-            const rows = await this.dataClient.executeRead(sql);
+            const rows = await this.dataClient.executeReadWithCredentials(sql, credentials);
             queries.push({
               sql,
               operation: 'SELECT',
@@ -135,36 +171,14 @@ export class AgentService {
             toolResult = { success: true, rowCount: rows.length, rows };
             break;
           }
-          case 'create': {
+          case 'write_query': {
+            const credentials = await this.resolveCredentials(args.connectionId, credentialsCache);
             const sql = args.sql;
-            const result = await this.executeWrite(sql, 'INSERT');
+            const operation = args.operation || 'INSERT';
+            const result = await this.executeWrite(sql, operation, credentials);
             queries.push({
               sql,
-              operation: 'INSERT',
-              rowCount: result.affectedRows,
-              error: result.error,
-            });
-            toolResult = result;
-            break;
-          }
-          case 'update': {
-            const sql = args.sql;
-            const result = await this.executeWrite(sql, 'UPDATE');
-            queries.push({
-              sql,
-              operation: 'UPDATE',
-              rowCount: result.affectedRows,
-              error: result.error,
-            });
-            toolResult = result;
-            break;
-          }
-          case 'delete': {
-            const sql = args.sql;
-            const result = await this.executeWrite(sql, 'DELETE');
-            queries.push({
-              sql,
-              operation: 'DELETE',
+              operation,
               rowCount: result.affectedRows,
               error: result.error,
             });
@@ -173,6 +187,7 @@ export class AgentService {
           }
           case 'stop': {
             const finalMessage = args.message || 'Done';
+            onToolCall?.({ tool: name, args, status: 'completed' });
             return { reply: finalMessage, queries };
           }
           default:
@@ -188,6 +203,8 @@ export class AgentService {
         });
       }
 
+      onToolCall?.({ tool: name, args, status: 'completed', result: toolResult });
+
       conversation.push({
         role: 'function',
         content: JSON.stringify(toolResult),
@@ -200,6 +217,26 @@ export class AgentService {
         "I reached the maximum number of steps. Here's what I found so far.",
       queries,
     };
+  }
+
+  private async resolveCredentials(
+    connectionId: string,
+    cache: Map<string, ConnectionCredentials>,
+  ): Promise<ConnectionCredentials> {
+    if (cache.has(connectionId)) {
+      return cache.get(connectionId)!;
+    }
+    const data = await this.dataClient.getConnectionCredentials(connectionId);
+    const credentials: ConnectionCredentials = {
+      host: data.host,
+      port: data.port,
+      database: data.database,
+      username: data.username,
+      password: data.password,
+      ssl: data.ssl,
+    };
+    cache.set(connectionId, credentials);
+    return credentials;
   }
 
   private async checkRateLimit(
@@ -220,7 +257,6 @@ export class AgentService {
     }
   }
 
-
   private enforceLimitOnSelect(sql: string): string {
     const maxRows = this.cfg.maxRows;
     const trimmed = sql.trim().replace(/;$/, '');
@@ -234,10 +270,10 @@ export class AgentService {
     return trimmed;
   }
 
-
   private async executeWrite(
     sql: string,
-    expectedType: 'INSERT' | 'UPDATE' | 'DELETE',
+    expectedType: string,
+    credentials: ConnectionCredentials,
   ): Promise<WriteResult> {
     const trimmed = sql.trim().toUpperCase();
     if (!trimmed.startsWith(expectedType)) {
@@ -246,7 +282,7 @@ export class AgentService {
         error: `Expected ${expectedType} statement but got something else`,
       };
     }
-    const affectedRows = await this.dataClient.executeWrite(sql);
+    const affectedRows = await this.dataClient.executeWriteWithCredentials(sql, credentials);
     return { success: true, affectedRows };
   }
 }

@@ -33,4 +33,8 @@ export default registerAs('core', () => ({
   throttleShortLimit: requireInt('THROTTLE_SHORT_LIMIT'),
   throttleLongTtlMs: requireInt('THROTTLE_LONG_TTL_MS'),
   throttleLongLimit: requireInt('THROTTLE_LONG_LIMIT'),
+  alertWebhookUrl: requireStr('ALERT_WEBHOOK_URL'),
+  alertWebhookUsername: requireStr('ALERT_WEBHOOK_USERNAME'),
+  alertWebhookPassword: requireStr('ALERT_WEBHOOK_PASSWORD'),
+  alertWebhookPath: requireStr('ALERT_WEBHOOK_PATH'),
 }));

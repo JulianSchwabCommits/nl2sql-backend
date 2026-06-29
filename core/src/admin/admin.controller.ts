@@ -25,6 +25,7 @@ import * as bcrypt from 'bcrypt';
 import { Public } from '@nl2sql/auth';
 import coreConfig, { MIN_PASSWORD_LENGTH } from '../config/core.config';
 import { AuthDatabaseService } from '../auth-database';
+import { ConnectionsService } from '../connections';
 import type { Request, Response } from 'express';
 
 @Controller('admin')
@@ -36,6 +37,7 @@ export class AdminController {
     @Inject(coreConfig.KEY)
     private readonly cfg: ConfigType<typeof coreConfig>,
     @InjectPinoLogger(AdminController.name) private readonly logger: PinoLogger,
+    private readonly connections: ConnectionsService,
   ) {}
 
 
@@ -165,6 +167,8 @@ export class AdminController {
       where: { email },
       data: { approved: true },
     });
+
+    await this.connections.createDefaultConnection(user.id);
 
     this.logger.info(
       {

@@ -13,6 +13,7 @@ import * as bcrypt from 'bcrypt';
 import coreConfig from '../config/core.config';
 import { AuthDatabaseService } from '../auth-database';
 import { RegisterDto, LoginDto } from './dto';
+import { NotificationService } from './notification.service';
 
 @Injectable()
 export class AuthService {
@@ -20,6 +21,7 @@ export class AuthService {
     private readonly db: AuthDatabaseService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly notification: NotificationService,
     @Inject(coreConfig.KEY)
     private readonly cfg: ConfigType<typeof coreConfig>,
     @InjectPinoLogger(AuthService.name) private readonly logger: PinoLogger,
@@ -53,6 +55,8 @@ export class AuthService {
       { event: 'auth.signup', email: dto.email, name: dto.name },
       'user signed up (pending approval)',
     );
+
+    this.notification.notifyRegistration(dto.name || dto.email);
 
     return {
       message:
