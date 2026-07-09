@@ -2,15 +2,12 @@ import {
   BadRequestException,
   Body,
   Controller,
-  Get,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { InternalGuard } from '@nl2sql/auth';
-import { DatabaseService } from '../database/database.service';
 import { DynamicConnectionService, ConnectionCredentials } from '../database/dynamic-connection.service';
-import { SchemaLoaderService } from '../schema/schema-loader.service';
 
 interface QueryWithCredentials {
   sql?: string;
@@ -34,17 +31,10 @@ interface SchemaWithCredentials {
 @Controller('internal')
 export class QueryController {
   constructor(
-    private readonly db: DatabaseService,
     private readonly dynamicDb: DynamicConnectionService,
-    private readonly schemaLoader: SchemaLoaderService,
     @InjectPinoLogger(QueryController.name)
     private readonly logger: PinoLogger,
   ) {}
-
-  @Get('schema')
-  getSchema(): { schema: string } {
-    return { schema: this.schemaLoader.getSchema() };
-  }
 
   @Post('schema')
   async getSchemaForConnection(@Body() body: SchemaWithCredentials) {
@@ -60,13 +50,11 @@ export class QueryController {
     if (!body?.sql) {
       throw new BadRequestException('sql is required');
     }
-
-    let rows: unknown[];
-    if (body.credentials) {
-      rows = await this.dynamicDb.query(body.credentials, body.sql);
-    } else {
-      rows = await this.db.$queryRawUnsafe<unknown[]>(body.sql);
+    if (!body?.credentials) {
+      throw new BadRequestException('credentials is required');
     }
+
+    const rows = await this.dynamicDb.query(body.credentials, body.sql);
 
     this.logger.info(
       { event: 'db.query.read', sql: body.sql, rowCount: rows.length },
@@ -80,13 +68,11 @@ export class QueryController {
     if (!body?.sql) {
       throw new BadRequestException('sql is required');
     }
-
-    let affectedRows: number;
-    if (body.credentials) {
-      affectedRows = await this.dynamicDb.execute(body.credentials, body.sql);
-    } else {
-      affectedRows = await this.db.$executeRawUnsafe(body.sql);
+    if (!body?.credentials) {
+      throw new BadRequestException('credentials is required');
     }
+
+    const affectedRows = await this.dynamicDb.execute(body.credentials, body.sql);
 
     this.logger.info(
       { event: 'db.query.write', sql: body.sql, affectedRows },

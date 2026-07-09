@@ -43,7 +43,9 @@ read -sp "JWT Secret: " JWT_SECRET
 echo ""
 read -sp "JWT Refresh Secret: " JWT_REFRESH_SECRET
 echo ""
-read -sp "OpenAI API Key: " OPENAI_API_KEY
+read -sp "DB Encryption Key: " DB_ENCRYPTION_KEY
+echo ""
+read -sp "Internal API Key: " INTERNAL_API_KEY
 echo ""
 
 # Create JSON for secrets
@@ -51,12 +53,14 @@ SECRET_JSON=$(jq -n \
   --arg db_pass "$DATABASE_PASSWORD" \
   --arg jwt_secret "$JWT_SECRET" \
   --arg jwt_refresh "$JWT_REFRESH_SECRET" \
-  --arg openai_key "$OPENAI_API_KEY" \
+  --arg db_enc_key "$DB_ENCRYPTION_KEY" \
+  --arg internal_key "$INTERNAL_API_KEY" \
   '{
     database_password: $db_pass,
     jwt_secret: $jwt_secret,
     jwt_refresh_secret: $jwt_refresh,
-    openai_api_key: $openai_key
+    db_encryption_key: $db_enc_key,
+    internal_api_key: $internal_key
   }')
 
 echo ""

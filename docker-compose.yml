@@ -5,25 +5,6 @@
 #                                          ├─▶ agent    (:3001)  /agent/* /socket.io/*
 #                                          └─(agent)──▶ database (:3002)  /internal/*
 services:
-  food-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: food
-    ports:
-      - '5432:5432'
-    volumes:
-      - food-db-data:/var/lib/postgresql/data
-    networks:
-      - backend
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d food']
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   auth-db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -105,13 +86,6 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       DB_ENCRYPTION_KEY: ${DB_ENCRYPTION_KEY}
       DATABASE_SERVICE_URL: http://database:3002
-      DEFAULT_DATABASE_NAME: ${DEFAULT_DATABASE_NAME:-Food Database (Demo)}
-      DEFAULT_DATABASE_HOST: food-db
-      DEFAULT_DATABASE_PORT: '5432'
-      DEFAULT_DATABASE_DB: food
-      DEFAULT_DATABASE_USERNAME: postgres
-      DEFAULT_DATABASE_PASSWORD: postgres
-      DEFAULT_DATABASE_SSL: 'false'
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL}
       ALERT_WEBHOOK_USERNAME: ${ALERT_WEBHOOK_USERNAME}
       ALERT_WEBHOOK_PASSWORD: ${ALERT_WEBHOOK_PASSWORD}
@@ -137,7 +111,6 @@ services:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3001
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
       JWT_SECRET: ${JWT_SECRET}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       CORS_ORIGIN: ${CORS_ORIGIN}
@@ -166,15 +139,12 @@ services:
       dockerfile: database/Dockerfile
     restart: unless-stopped
     depends_on:
-      food-db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     environment:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 3002
-      DATABASE_URL: postgresql://postgres:postgres@food-db:5432/food
       REDIS_URL: redis://redis:6379
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       MAX_MESSAGES_PER_CONVERSATION: ${MAX_MESSAGES_PER_CONVERSATION}
@@ -195,6 +165,5 @@ networks:
     driver: bridge
 
 volumes:
-  food-db-data:
   auth-db-data:
   redis-data:

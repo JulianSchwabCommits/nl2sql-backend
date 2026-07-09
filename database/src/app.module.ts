@@ -9,7 +9,7 @@ import { RedisModule } from './redis/redis.module';
 import { InternalModule } from './internal/internal.module';
 
 
-const REQUIRED_ENV = ['DATABASE_URL', 'REDIS_URL', 'INTERNAL_API_KEY'];
+const REQUIRED_ENV = ['REDIS_URL', 'INTERNAL_API_KEY'];
 
 @Module({
   imports: [

@@ -136,29 +136,6 @@ export class ConnectionsService {
     }));
   }
 
-  async createDefaultConnection(userId: number) {
-    const name = this.config.get<string>('DEFAULT_DATABASE_NAME') || 'Food Database (Demo)';
-    const host = this.config.getOrThrow<string>('DEFAULT_DATABASE_HOST');
-    const port = parseInt(this.config.get<string>('DEFAULT_DATABASE_PORT') || '5432', 10);
-    const database = this.config.getOrThrow<string>('DEFAULT_DATABASE_DB');
-    const username = this.config.getOrThrow<string>('DEFAULT_DATABASE_USERNAME');
-    const password = this.config.getOrThrow<string>('DEFAULT_DATABASE_PASSWORD');
-    const ssl = this.config.get<string>('DEFAULT_DATABASE_SSL') === 'true';
-
-    await this.db.databaseConnection.create({
-      data: {
-        userId,
-        name,
-        host,
-        port,
-        database,
-        username,
-        password: this.crypto.encrypt(password),
-        ssl,
-      },
-    });
-  }
-
   private async findOwnedOrThrow(userId: number, id: string) {
     const connection = await this.db.databaseConnection.findUnique({
       where: { id },

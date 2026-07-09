@@ -1,10 +1,9 @@
 import { Global, Module } from '@nestjs/common';
-import { DatabaseService } from './database.service';
 import { DynamicConnectionService } from './dynamic-connection.service';
 
 @Global()
 @Module({
-  providers: [DatabaseService, DynamicConnectionService],
-  exports: [DatabaseService, DynamicConnectionService],
+  providers: [DynamicConnectionService],
+  exports: [DynamicConnectionService],
 })
 export class DatabaseModule {}
