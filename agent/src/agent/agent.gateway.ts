@@ -13,7 +13,7 @@ import { Server, Socket } from 'socket.io';
 import { AgentService, ToolCallEvent } from './agent.service';
 import { DataClientService } from '../data-client/data-client.service';
 import { WsJwtApprovalGuard } from './guards/ws-jwt-approval.guard';
-import { AgentMessage, ChatExchange, ChatMessage } from '../types';
+import { AgentMessage, ChatExchange, ChatMessage, ToolCallRecord } from '../types';
 
 @WebSocketGateway({
   namespace: 'agent',
@@ -82,8 +82,19 @@ export class AgentGateway
 
     client.emit('agent:thinking', { conversationId });
 
+    const toolCallRecords: ToolCallRecord[] = [];
     const onToolCall = (event: ToolCallEvent) => {
       client.emit('agent:tool_call', { ...event, conversationId });
+      if (event.status === 'completed') {
+        const existing = toolCallRecords.find(
+          (tc) => tc.tool === event.tool && !tc.result,
+        );
+        if (existing) {
+          existing.result = event.result;
+        }
+      } else {
+        toolCallRecords.push({ tool: event.tool, args: event.args });
+      }
     };
 
     try {
@@ -146,6 +157,8 @@ export class AgentGateway
         role: 'assistant',
         content: result.reply,
         timestamp: new Date().toISOString(),
+        queries: result.queries.length > 0 ? result.queries : undefined,
+        toolCalls: toolCallRecords.length > 0 ? toolCallRecords : undefined,
       };
       await this.dataClient.addMessage(
         userId,

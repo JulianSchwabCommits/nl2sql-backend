@@ -117,12 +117,16 @@ export interface ChatToolResponse {
   functionCall?: { name: string; args: Record<string, any> };
 }
 
+export interface LlmRequestConfig {
+  apiKey: string;
+  model: string;
+  provider: string;
+}
+
 @Injectable()
 export class OpenAIService {
   private readonly logger = new Logger(OpenAIService.name);
-  private readonly apiKey = process.env.OPENAI_API_KEY;
-  private readonly baseUrl: string;
-  private readonly model: string;
+  private readonly defaultBaseUrl: string;
   private readonly tools: ReturnType<typeof buildTools>;
   private systemPrompt: string | null = null;
 
@@ -130,9 +134,17 @@ export class OpenAIService {
     @Inject(agentConfig.KEY)
     private readonly cfg: ConfigType<typeof agentConfig>,
   ) {
-    this.baseUrl = cfg.openaiBaseUrl;
-    this.model = cfg.openaiModel;
+    this.defaultBaseUrl = cfg.openaiBaseUrl;
     this.tools = buildTools(cfg.maxRows);
+  }
+
+  private getBaseUrl(provider: string): string {
+    switch (provider) {
+      case 'openai':
+        return this.defaultBaseUrl;
+      default:
+        return this.defaultBaseUrl;
+    }
   }
 
   getSystemPrompt(): string {
@@ -154,23 +166,24 @@ export class OpenAIService {
     return this.systemPrompt;
   }
 
-  async chatWithTools(messages: AgentMessage[]): Promise<ChatToolResponse> {
-    if (!this.apiKey) {
+  async chatWithTools(messages: AgentMessage[], llmConfig: LlmRequestConfig): Promise<ChatToolResponse> {
+    if (!llmConfig.apiKey) {
       throw new InternalServerErrorException(
-        'OPENAI_API_KEY is not configured on the server',
+        'No API key configured. Please add your API key in Settings.',
       );
     }
     const systemPrompt = this.getSystemPrompt();
     const openaiMessages = this.buildMessages(messages, systemPrompt);
+    const baseUrl = this.getBaseUrl(llmConfig.provider);
     try {
-      const response = await fetch(this.baseUrl, {
+      const response = await fetch(baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${llmConfig.apiKey}`,
         },
         body: JSON.stringify({
-          model: this.model,
+          model: llmConfig.model,
           messages: openaiMessages,
           tools: this.tools,
           tool_choice: 'auto',
@@ -181,6 +194,11 @@ export class OpenAIService {
         this.logger.error(
           `OpenAI API error (${response.status}): ${errorBody}`,
         );
+        if (response.status === 401) {
+          throw new InternalServerErrorException(
+            'Invalid API key. Please check your API key in Settings.',
+          );
+        }
         throw new InternalServerErrorException(
           `LLM service returned status ${response.status}`,
         );

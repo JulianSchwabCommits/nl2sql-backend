@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
-import { OpenAIService } from '../openai/openai.service';
+import { OpenAIService, LlmRequestConfig } from '../openai/openai.service';
 import { DataClientService, ConnectionCredentials } from '../data-client/data-client.service';
 import agentConfig from '../config/agent.config';
 import { AgentMessage, AgentResult, QueryRecord } from '../types';
@@ -96,6 +96,21 @@ export class AgentService {
     userId: number,
     onToolCall?: OnToolCall,
   ): Promise<AgentResult> {
+    const llmSettings = await this.dataClient.getUserLlmSettings(userId);
+    if (!llmSettings || !llmSettings.apiKey) {
+      return {
+        reply: 'Please configure your LLM API key in Settings before using the chat.',
+        queries: [],
+        error: 'no_llm_settings',
+      };
+    }
+
+    const llmConfig: LlmRequestConfig = {
+      apiKey: llmSettings.apiKey,
+      model: llmSettings.model,
+      provider: llmSettings.provider,
+    };
+
     const trimmedHistory = history.slice(-this.cfg.maxHistoryMessages);
     const conversation: AgentMessage[] = [
       ...trimmedHistory,
@@ -113,7 +128,7 @@ export class AgentService {
         return { reply: 'Request was cancelled.', queries, error: 'cancelled' };
       }
 
-      const response = await this.openAIService.chatWithTools(conversation);
+      const response = await this.openAIService.chatWithTools(conversation, llmConfig);
 
       if (signal.aborted) {
         return { reply: 'Request was cancelled.', queries, error: 'cancelled' };

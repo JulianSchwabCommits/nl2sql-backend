@@ -22,7 +22,17 @@ describe("AgentService", () => {
     mockDataClient = {
       executeRead: jest.fn(),
       executeWrite: jest.fn(),
+      executeReadWithCredentials: jest.fn(),
+      executeWriteWithCredentials: jest.fn(),
+      getConnectionCredentials: jest.fn(),
+      listUserConnections: jest.fn(),
+      getSchemaForConnection: jest.fn(),
       checkRateLimit: jest.fn(),
+      getUserLlmSettings: jest.fn().mockResolvedValue({
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        apiKey: 'test-api-key',
+      }),
     };
     service = new AgentService(mockOpenAI, mockDataClient, mockConfig);
   });
@@ -125,12 +135,8 @@ describe("AgentService", () => {
     });
 
     it("skips rate limit check when no userId", async () => {
-      mockOpenAI.chatWithTools.mockResolvedValue({ text: "OK" });
-
-      const result = await service.handleMessage("hello", []);
-
+      await expect(service.handleMessage("hello", [])).rejects.toThrow("No userid");
       expect(mockDataClient.checkRateLimit).not.toHaveBeenCalled();
-      expect(result.reply).toBe("OK");
     });
   });
 
@@ -148,13 +154,21 @@ describe("AgentService", () => {
       expect(result.queries).toEqual([]);
     });
 
-    it("dispatches get tool call and accumulates query", async () => {
+    it("dispatches read_query tool call and accumulates query", async () => {
       const rows = [{ id: 1, name: "Apple" }];
-      mockDataClient.executeRead.mockResolvedValue(rows);
+      mockDataClient.executeReadWithCredentials.mockResolvedValue(rows);
+      mockDataClient.getConnectionCredentials.mockResolvedValue({
+        host: "localhost",
+        port: 5432,
+        database: "food",
+        username: "user",
+        password: "pass",
+        ssl: false,
+      });
 
       mockOpenAI.chatWithTools
         .mockResolvedValueOnce({
-          functionCall: { name: "get", args: { sql: 'SELECT * FROM "Food"' } },
+          functionCall: { name: "read_query", args: { sql: 'SELECT * FROM "Food"', connectionId: "conn-1" } },
         })
         .mockResolvedValueOnce({
           functionCall: {
@@ -165,8 +179,9 @@ describe("AgentService", () => {
 
       const result = await service.handleMessage("find foods", [], "user-1");
 
-      expect(mockDataClient.executeRead).toHaveBeenCalledWith(
+      expect(mockDataClient.executeReadWithCredentials).toHaveBeenCalledWith(
         'SELECT * FROM "Food" LIMIT 25',
+        expect.objectContaining({ host: "localhost" }),
       );
       expect(result.reply).toBe("Found 1 food");
       expect(result.queries).toHaveLength(1);
@@ -222,11 +237,20 @@ describe("AgentService", () => {
     });
 
     it("rejects write when SQL does not match expected type", async () => {
+      mockDataClient.getConnectionCredentials.mockResolvedValue({
+        host: "localhost",
+        port: 5432,
+        database: "food",
+        username: "user",
+        password: "pass",
+        ssl: false,
+      });
+
       mockOpenAI.chatWithTools
         .mockResolvedValueOnce({
           functionCall: {
-            name: "create",
-            args: { sql: 'DELETE FROM "Food"' },
+            name: "write_query",
+            args: { sql: 'DELETE FROM "Food"', operation: "INSERT", connectionId: "conn-1" },
           },
         })
         .mockResolvedValueOnce({
@@ -238,7 +262,7 @@ describe("AgentService", () => {
 
       const result = await service.handleMessage("test", [], "user-1");
 
-      expect(mockDataClient.executeWrite).not.toHaveBeenCalled();
+      expect(mockDataClient.executeWriteWithCredentials).not.toHaveBeenCalled();
       expect(result.queries[0].error).toContain("Expected INSERT");
     });
 

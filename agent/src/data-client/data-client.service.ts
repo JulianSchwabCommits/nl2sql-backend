@@ -32,6 +32,12 @@ export interface ConnectionInfo {
   ssl: boolean;
 }
 
+export interface LlmSettings {
+  provider: string;
+  model: string;
+  apiKey: string;
+}
+
 @Injectable()
 export class DataClientService {
   private readonly logger = new Logger(DataClientService.name);
@@ -61,6 +67,10 @@ export class DataClientService {
     return this.request('GET', `/internal/connections/${connectionId}/credentials`, undefined, this.coreUrl);
   }
 
+  async getUserLlmSettings(userId: number): Promise<LlmSettings | null> {
+    return this.request('GET', `/internal/llm-settings/user/${userId}`, undefined, this.coreUrl);
+  }
+
   async getSchemaForConnection(credentials: ConnectionCredentials): Promise<string> {
     const data = await this.request<{ schema: string }>(
       'POST',
@@ -84,32 +94,6 @@ export class DataClientService {
       'POST',
       '/internal/query/write',
       { sql, credentials },
-    );
-    return data.affectedRows;
-  }
-
-  async getSchema(): Promise<string> {
-    const data = await this.request<{ schema: string }>(
-      'GET',
-      '/internal/schema',
-    );
-    return data.schema;
-  }
-
-  async executeRead(sql: string): Promise<any[]> {
-    const data = await this.request<{ rows: any[]; rowCount: number }>(
-      'POST',
-      '/internal/query/read',
-      { sql },
-    );
-    return data.rows;
-  }
-
-  async executeWrite(sql: string): Promise<number> {
-    const data = await this.request<{ affectedRows: number }>(
-      'POST',
-      '/internal/query/write',
-      { sql },
     );
     return data.affectedRows;
   }

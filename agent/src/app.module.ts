@@ -9,7 +9,6 @@ import { CoreClientModule } from './core-client/core-client.module';
 import { AgentModule } from './agent/agent.module';
 
 const REQUIRED_ENV = [
-  'OPENAI_API_KEY',
   'JWT_SECRET',
   'DATABASE_SERVICE_URL',
   'CORE_SERVICE_URL',
