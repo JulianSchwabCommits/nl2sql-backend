@@ -13,6 +13,18 @@ import {
   Conversation,
 } from '../types';
 
+export interface ConversationMeta {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+export interface ConversationListResponse {
+  conversations: ConversationMeta[];
+  total: number;
+  hasMore: boolean;
+}
+
 export interface ConnectionCredentials {
   host: string;
   port: number;
@@ -112,6 +124,17 @@ export class DataClientService {
 
   getAllConversations(userId: number): Promise<Conversation[]> {
     return this.request('GET', `/internal/conversations/${userId}`);
+  }
+
+  getConversationsMeta(
+    userId: number,
+    offset = 0,
+    limit = 15,
+  ): Promise<ConversationListResponse> {
+    return this.request(
+      'GET',
+      `/internal/conversations/${userId}/meta?offset=${offset}&limit=${limit}`,
+    );
   }
 
   getConversation(

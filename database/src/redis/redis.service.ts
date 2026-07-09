@@ -3,11 +3,39 @@ import type { ConfigType } from '@nestjs/config';
 import Redis from 'ioredis';
 import databaseConfig from '../config/database.config';
 
+export interface QueryRecord {
+  sql: string;
+  operation: string;
+  results?: any[];
+  rowCount?: number;
+  error?: string;
+}
+
+export interface ToolCallRecord {
+  tool: string;
+  args?: Record<string, any>;
+  result?: Record<string, any>;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  queries?: QueryRecord[];
+  toolCalls?: ToolCallRecord[];
+}
+
+export interface ConversationMeta {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+export interface ConversationListResponse {
+  conversations: ConversationMeta[];
+  total: number;
+  hasMore: boolean;
 }
 
 export interface Conversation {
@@ -168,6 +196,39 @@ export class RedisService {
       if (conv) conversations.push(conv);
     }
     return conversations;
+  }
+
+  async getConversationsMeta(
+    userId: number,
+    offset = 0,
+    limit = 15,
+  ): Promise<ConversationListResponse> {
+    const total = await this.client.zcard(this.conversationListKey(userId));
+    const ids = await this.client.zrevrange(
+      this.conversationListKey(userId),
+      offset,
+      offset + limit - 1,
+    );
+
+    const conversations: ConversationMeta[] = [];
+    for (const id of ids) {
+      const key = this.conversationKey(userId, id);
+      const metaRaw = await this.client.hget(key, 'meta');
+      if (metaRaw) {
+        const meta = JSON.parse(metaRaw);
+        conversations.push({
+          id: meta.id,
+          title: meta.title,
+          createdAt: meta.createdAt,
+        });
+      }
+    }
+
+    return {
+      conversations,
+      total,
+      hasMore: offset + limit < total,
+    };
   }
 
   async deleteConversation(

@@ -25,6 +25,17 @@ export class ConversationsController {
     return this.redis.getAllConversations(userId);
   }
 
+  @Get(':userId/meta')
+  getMeta(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('offset') offset?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedOffset = offset ? parseInt(offset, 10) : 0;
+    const parsedLimit = limit ? parseInt(limit, 10) : 15;
+    return this.redis.getConversationsMeta(userId, parsedOffset, parsedLimit);
+  }
+
   @Get(':userId/:conversationId')
   get(
     @Param('userId', ParseIntPipe) userId: number,

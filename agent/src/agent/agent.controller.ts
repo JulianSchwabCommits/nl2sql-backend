@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -36,9 +37,15 @@ export class AgentController {
   }
 
   @Get('conversations')
-  async getConversations(@Req() req: AuthedRequest) {
+  async getConversations(
+    @Req() req: AuthedRequest,
+    @Query('offset') offset?: string,
+    @Query('limit') limit?: string,
+  ) {
     const userId = req.user.sub;
-    return this.dataClient.getAllConversations(userId);
+    const parsedOffset = offset ? parseInt(offset, 10) : 0;
+    const parsedLimit = limit ? parseInt(limit, 10) : 15;
+    return this.dataClient.getConversationsMeta(userId, parsedOffset, parsedLimit);
   }
 
   @Get('conversations/:id')
