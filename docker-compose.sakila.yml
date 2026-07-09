@@ -11,6 +11,8 @@ services:
     volumes:
       - sakila-db-data:/var/lib/postgresql/data
       - ./sakila-init:/docker-entrypoint-initdb.d
+    networks:
+      - backend
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U sakila -d sakila']
       interval: 5s
@@ -19,3 +21,8 @@ services:
 
 volumes:
   sakila-db-data:
+
+networks:
+  backend:
+    external: true
+    name: nl2sql-backend_backend

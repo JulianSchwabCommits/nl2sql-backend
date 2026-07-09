@@ -1,0 +1,21 @@
+# Developer tools — run alongside the main stack:
+#   docker compose -f docker-compose.tools.yml up -d
+
+services:
+  redis-insight:
+    image: redis/redisinsight:latest
+    restart: unless-stopped
+    ports:
+      - '5540:5540'
+    volumes:
+      - redis-insight-data:/data
+    networks:
+      - backend
+
+networks:
+  backend:
+    external: true
+    name: nl2sql-backend_backend
+
+volumes:
+  redis-insight-data:
