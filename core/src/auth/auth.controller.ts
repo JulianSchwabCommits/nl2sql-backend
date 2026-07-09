@@ -45,6 +45,7 @@ export class AuthController {
     return { accessToken: tokens.accessToken };
   }
 
+  @Public()
   @UseGuards(RefreshGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
@@ -84,8 +85,8 @@ export class AuthController {
   private setRefreshCookie(res: Response, token: string) {
     res.cookie('refresh_token', token, {
       httpOnly: true,
-      secure: this.config.get('NODE_ENV') === 'production',
-      sameSite: 'strict',
+      secure: this.cfg.cookieSecure,
+      sameSite: 'lax',
       maxAge: this.cfg.refreshTokenTtlSec * 1000,
       path: '/auth/refresh',
     });
