@@ -17,7 +17,8 @@ RUN npm run build -w @nl2sql/logger \
 FROM node:20-alpine AS runner
 WORKDIR /app/agent
 ENV NODE_ENV=production
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init \
+ && addgroup -S app && adduser -S app -G app
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/packages/logger/dist /app/packages/logger/dist
 COPY --from=build /app/packages/logger/package.json /app/packages/logger/package.json
@@ -27,6 +28,7 @@ COPY --from=build /app/agent/dist ./dist
 COPY --from=build /app/agent/package.json ./package.json
 COPY --from=build /app/agent/data ./data
 COPY --from=build /app/agent/entrypoint.sh ./entrypoint.sh
+USER app
 EXPOSE 3001
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["sh", "entrypoint.sh"]
