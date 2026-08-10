@@ -245,17 +245,19 @@ export class OpenAIService {
     systemPrompt: string,
   ): any[] {
     const result: any[] = [{ role: 'system', content: systemPrompt }];
+    let lastToolCallId = '';
     for (const msg of messages) {
       if (msg.role === 'user') {
         result.push({ role: 'user', content: msg.content });
       } else if (msg.role === 'model') {
         if (msg.functionCall) {
+          lastToolCallId = `call_${result.length}`;
           result.push({
             role: 'assistant',
             content: null,
             tool_calls: [
               {
-                id: `call_${Date.now()}`,
+                id: lastToolCallId,
                 type: 'function',
                 function: {
                   name: msg.functionCall.name,
@@ -270,7 +272,7 @@ export class OpenAIService {
       } else if (msg.role === 'function') {
         result.push({
           role: 'tool',
-          tool_call_id: `call_${Date.now()}`,
+          tool_call_id: lastToolCallId,
           content: msg.content,
         });
       }

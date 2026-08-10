@@ -51,6 +51,14 @@ model DatabaseConnection {
   username  String
   password  String
   ssl       Boolean  @default(false)
+  sshEnabled    Boolean  @default(false)
+  sshHost       String?
+  sshPort       Int?     @default(22)
+  sshUsername   String?
+  sshAuthMethod String?  // "password" | "privateKey"
+  sshPassword   String?  // encrypted at rest
+  sshPrivateKey String?  // encrypted at rest (PEM format)
+  sshHostKeyFingerprint String? // SHA-256 fingerprint for TOFU verification
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

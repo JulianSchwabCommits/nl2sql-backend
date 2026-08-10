@@ -21,7 +21,15 @@ export class DatabaseClientService {
     username: string;
     password: string;
     ssl: boolean;
-  }): Promise<{ success: boolean; error?: string }> {
+    sshEnabled?: boolean;
+    sshHost?: string | null;
+    sshPort?: number | null;
+    sshUsername?: string | null;
+    sshAuthMethod?: string | null;
+    sshPassword?: string | null;
+    sshPrivateKey?: string | null;
+    sshHostKeyFingerprint?: string | null;
+  }): Promise<{ success: boolean; error?: string; hostKeyFingerprint?: string }> {
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}/internal/connections/test`, {

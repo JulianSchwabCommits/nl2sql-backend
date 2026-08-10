@@ -249,6 +249,14 @@ export class AgentService {
       username: data.username,
       password: data.password,
       ssl: data.ssl,
+      sshEnabled: data.sshEnabled,
+      sshHost: data.sshHost,
+      sshPort: data.sshPort,
+      sshUsername: data.sshUsername,
+      sshAuthMethod: data.sshAuthMethod,
+      sshPassword: data.sshPassword,
+      sshPrivateKey: data.sshPrivateKey,
+      sshHostKeyFingerprint: data.sshHostKeyFingerprint,
     };
     cache.set(connectionId, credentials);
     return credentials;

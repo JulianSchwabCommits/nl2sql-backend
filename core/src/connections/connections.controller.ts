@@ -56,7 +56,14 @@ export class ConnectionsController {
   async test(@Req() req: Request, @Param('id') id: string) {
     const userId = req['user'].sub;
     const credentials = await this.connections.getWithCredentials(userId, id);
-    return this.dbClient.testConnection(credentials);
+    const result = await this.dbClient.testConnection(credentials);
+
+    // TOFU: persist SSH host key fingerprint on first successful connection
+    if (result.success && result.hostKeyFingerprint && !credentials.sshHostKeyFingerprint) {
+      await this.connections.storeHostKeyFingerprint(id, result.hostKeyFingerprint);
+    }
+
+    return result;
   }
 
   @Post('test')
@@ -69,6 +76,13 @@ export class ConnectionsController {
       username: dto.username,
       password: dto.password,
       ssl: dto.ssl ?? false,
+      sshEnabled: dto.sshEnabled ?? false,
+      sshHost: dto.sshHost,
+      sshPort: dto.sshPort ?? 22,
+      sshUsername: dto.sshUsername,
+      sshAuthMethod: dto.sshAuthMethod,
+      sshPassword: dto.sshPassword,
+      sshPrivateKey: dto.sshPrivateKey,
     });
   }
 }

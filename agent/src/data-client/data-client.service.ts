@@ -32,6 +32,15 @@ export interface ConnectionCredentials {
   username: string;
   password: string;
   ssl: boolean;
+  // SSH tunnel configuration (optional)
+  sshEnabled?: boolean;
+  sshHost?: string;
+  sshPort?: number;
+  sshUsername?: string;
+  sshAuthMethod?: 'password' | 'privateKey';
+  sshPassword?: string;
+  sshPrivateKey?: string;
+  sshHostKeyFingerprint?: string;
 }
 
 export interface ConnectionInfo {

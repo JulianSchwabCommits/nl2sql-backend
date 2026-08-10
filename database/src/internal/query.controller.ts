@@ -14,14 +14,7 @@ interface QueryWithCredentials {
   credentials?: ConnectionCredentials;
 }
 
-interface TestConnectionBody {
-  host: string;
-  port: number;
-  database: string;
-  username: string;
-  password: string;
-  ssl: boolean;
-}
+interface TestConnectionBody extends ConnectionCredentials {}
 
 interface SchemaWithCredentials {
   credentials?: ConnectionCredentials;

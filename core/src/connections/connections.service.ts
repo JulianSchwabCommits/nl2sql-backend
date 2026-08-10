@@ -31,6 +31,11 @@ export class ConnectionsService {
         database: true,
         username: true,
         ssl: true,
+        sshEnabled: true,
+        sshHost: true,
+        sshPort: true,
+        sshUsername: true,
+        sshAuthMethod: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -46,6 +51,13 @@ export class ConnectionsService {
       );
     }
 
+    if (dto.sshPassword) {
+      dto.sshPassword = this.crypto.encrypt(dto.sshPassword);
+    }
+    if (dto.sshPrivateKey) {
+      dto.sshPrivateKey = this.crypto.encrypt(dto.sshPrivateKey);
+    }
+
     const connection = await this.db.databaseConnection.create({
       data: {
         userId,
@@ -56,6 +68,13 @@ export class ConnectionsService {
         username: dto.username,
         password: this.crypto.encrypt(dto.password),
         ssl: dto.ssl ?? false,
+        sshEnabled: dto.sshEnabled ?? false,
+        sshHost: dto.sshHost,
+        sshPort: dto.sshPort,
+        sshUsername: dto.sshUsername,
+        sshAuthMethod: dto.sshAuthMethod,
+        sshPassword: dto.sshPassword,
+        sshPrivateKey: dto.sshPrivateKey,
       },
     });
 
@@ -73,6 +92,24 @@ export class ConnectionsService {
     if (dto.username !== undefined) data.username = dto.username;
     if (dto.password !== undefined) data.password = this.crypto.encrypt(dto.password);
     if (dto.ssl !== undefined) data.ssl = dto.ssl;
+
+    if (dto.sshEnabled === false) {
+      data.sshEnabled = false;
+      data.sshHost = null;
+      data.sshPort = null;
+      data.sshUsername = null;
+      data.sshAuthMethod = null;
+      data.sshPassword = null;
+      data.sshPrivateKey = null;
+    } else {
+      if (dto.sshEnabled !== undefined) data.sshEnabled = dto.sshEnabled;
+      if (dto.sshHost !== undefined) data.sshHost = dto.sshHost;
+      if (dto.sshPort !== undefined) data.sshPort = dto.sshPort;
+      if (dto.sshUsername !== undefined) data.sshUsername = dto.sshUsername;
+      if (dto.sshAuthMethod !== undefined) data.sshAuthMethod = dto.sshAuthMethod;
+      if (dto.sshPassword !== undefined) data.sshPassword = this.crypto.encrypt(dto.sshPassword);
+      if (dto.sshPrivateKey !== undefined) data.sshPrivateKey = this.crypto.encrypt(dto.sshPrivateKey);
+    }
 
     const updated = await this.db.databaseConnection.update({
       where: { id: connection.id },
@@ -98,13 +135,27 @@ export class ConnectionsService {
       username: connection.username,
       password: this.crypto.decrypt(connection.password),
       ssl: connection.ssl,
+      sshEnabled: connection.sshEnabled,
+      sshHost: connection.sshHost,
+      sshPort: connection.sshPort,
+      sshUsername: connection.sshUsername,
+      sshAuthMethod: connection.sshAuthMethod,
+      sshPassword: connection.sshPassword ? this.crypto.decrypt(connection.sshPassword) : undefined,
+      sshPrivateKey: connection.sshPrivateKey ? this.crypto.decrypt(connection.sshPrivateKey) : undefined,
+      sshHostKeyFingerprint: connection.sshHostKeyFingerprint,
     };
   }
 
   async getCredentialsById(id: string) {
-    const connection = await this.db.databaseConnection.findUnique({
+    let connection = await this.db.databaseConnection.findUnique({
       where: { id },
     });
+    // Fallback: try lookup by name (LLMs sometimes pass name instead of UUID)
+    if (!connection) {
+      connection = await this.db.databaseConnection.findFirst({
+        where: { name: { equals: id, mode: 'insensitive' } },
+      });
+    }
     if (!connection) throw new NotFoundException('Connection not found');
     return {
       id: connection.id,
@@ -116,6 +167,14 @@ export class ConnectionsService {
       username: connection.username,
       password: this.crypto.decrypt(connection.password),
       ssl: connection.ssl,
+      sshEnabled: connection.sshEnabled,
+      sshHost: connection.sshHost,
+      sshPort: connection.sshPort,
+      sshUsername: connection.sshUsername,
+      sshAuthMethod: connection.sshAuthMethod,
+      sshPassword: connection.sshPassword ? this.crypto.decrypt(connection.sshPassword) : undefined,
+      sshPrivateKey: connection.sshPrivateKey ? this.crypto.decrypt(connection.sshPrivateKey) : undefined,
+      sshHostKeyFingerprint: connection.sshHostKeyFingerprint,
     };
   }
 
@@ -133,7 +192,26 @@ export class ConnectionsService {
       username: c.username,
       password: this.crypto.decrypt(c.password),
       ssl: c.ssl,
+      sshEnabled: c.sshEnabled,
+      sshHost: c.sshHost,
+      sshPort: c.sshPort,
+      sshUsername: c.sshUsername,
+      sshAuthMethod: c.sshAuthMethod,
+      sshPassword: c.sshPassword ? this.crypto.decrypt(c.sshPassword) : undefined,
+      sshPrivateKey: c.sshPrivateKey ? this.crypto.decrypt(c.sshPrivateKey) : undefined,
+      sshHostKeyFingerprint: c.sshHostKeyFingerprint,
     }));
+  }
+
+  /**
+   * Store the SSH host key fingerprint on first successful connection (TOFU).
+   * Only updates if the current stored value is null (never overwrites).
+   */
+  async storeHostKeyFingerprint(id: string, fingerprint: string): Promise<void> {
+    await this.db.databaseConnection.updateMany({
+      where: { id, sshHostKeyFingerprint: null },
+      data: { sshHostKeyFingerprint: fingerprint },
+    });
   }
 
   private async findOwnedOrThrow(userId: number, id: string) {
@@ -155,6 +233,11 @@ export class ConnectionsService {
     database: string;
     username: string;
     ssl: boolean;
+    sshEnabled: boolean;
+    sshHost: string | null;
+    sshPort: number | null;
+    sshUsername: string | null;
+    sshAuthMethod: string | null;
     createdAt: Date;
     updatedAt: Date;
     [key: string]: unknown;
@@ -167,6 +250,11 @@ export class ConnectionsService {
       database: connection.database,
       username: connection.username,
       ssl: connection.ssl,
+      sshEnabled: connection.sshEnabled,
+      sshHost: connection.sshHost,
+      sshPort: connection.sshPort,
+      sshUsername: connection.sshUsername,
+      sshAuthMethod: connection.sshAuthMethod,
       createdAt: connection.createdAt,
       updatedAt: connection.updatedAt,
     };

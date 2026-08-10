@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { Pool } from 'pg';
+import { SshTunnelService, SshTunnelConfig } from './ssh-tunnel.service';
 
 export interface ConnectionCredentials {
   host: string;
@@ -9,67 +10,106 @@ export interface ConnectionCredentials {
   username: string;
   password: string;
   ssl: boolean;
+  // SSH tunnel configuration (optional)
+  sshEnabled?: boolean;
+  sshHost?: string;
+  sshPort?: number;
+  sshUsername?: string;
+  sshAuthMethod?: 'password' | 'privateKey';
+  sshPassword?: string;
+  sshPrivateKey?: string;
+  sshHostKeyFingerprint?: string;
 }
 
 @Injectable()
 export class DynamicConnectionService implements OnModuleDestroy {
-  private readonly pools = new Map<string, { pool: Pool; lastUsed: number }>();
+  private readonly pools = new Map<string, { pool: Pool; lastUsed: number; tunnelKey?: string }>();
   private readonly IDLE_TIMEOUT_MS = 5 * 60 * 1000;
   private cleanupInterval: NodeJS.Timeout;
 
   constructor(
     @InjectPinoLogger(DynamicConnectionService.name)
     private readonly logger: PinoLogger,
+    private readonly sshTunnelService: SshTunnelService,
   ) {
     this.cleanupInterval = setInterval(() => this.evictIdle(), 60_000);
+
+    // Register callback to invalidate pools when their underlying SSH tunnel drops
+    this.sshTunnelService.setTunnelDropCallback((tunnelKey) => {
+      this.invalidatePoolsForTunnel(tunnelKey);
+    });
   }
 
   async onModuleDestroy() {
     clearInterval(this.cleanupInterval);
-    for (const [key, { pool }] of this.pools) {
+    for (const [key, { pool, tunnelKey }] of this.pools) {
       await pool.end();
+      if (tunnelKey) {
+        await this.sshTunnelService.releaseTunnel(tunnelKey).catch(() => {});
+      }
       this.pools.delete(key);
     }
   }
 
   async query(credentials: ConnectionCredentials, sql: string): Promise<unknown[]> {
-    const pool = this.getOrCreatePool(credentials);
+    const pool = await this.getOrCreatePool(credentials);
     const result = await pool.query(sql);
     return result.rows;
   }
 
   async execute(credentials: ConnectionCredentials, sql: string): Promise<number> {
-    const pool = this.getOrCreatePool(credentials);
+    const pool = await this.getOrCreatePool(credentials);
     const result = await pool.query(sql);
     return result.rowCount ?? 0;
   }
 
-  async testConnection(credentials: ConnectionCredentials): Promise<{ success: boolean; error?: string }> {
-    const pool = new Pool({
-      host: credentials.host,
-      port: credentials.port,
-      database: credentials.database,
-      user: credentials.username,
-      password: credentials.password,
-      ssl: credentials.ssl ? { rejectUnauthorized: false } : false,
-      max: 1,
-      connectionTimeoutMillis: 5000,
-    });
+  async testConnection(credentials: ConnectionCredentials): Promise<{ success: boolean; error?: string; hostKeyFingerprint?: string }> {
+    let tunnelInfo: { localHost: string; localPort: number; hostKeyFingerprint: string } | undefined;
+    let tunnelKey: string | undefined;
 
     try {
-      const client = await pool.connect();
-      await client.query('SELECT 1');
-      client.release();
-      await pool.end();
-      return { success: true };
+      // If SSH is enabled, create a temporary tunnel for the test
+      if (credentials.sshEnabled) {
+        const tunnelConfig = this.buildSshTunnelConfig(credentials);
+        tunnelKey = `${tunnelConfig.sshHost}:${tunnelConfig.sshPort}:${tunnelConfig.sshUsername}:${tunnelConfig.targetHost}:${tunnelConfig.targetPort}`;
+        const info = await this.sshTunnelService.getOrCreateTunnel(tunnelConfig);
+        tunnelInfo = { localHost: info.localHost, localPort: info.localPort, hostKeyFingerprint: info.hostKeyFingerprint };
+      }
+
+      const pool = new Pool({
+        host: tunnelInfo?.localHost ?? credentials.host,
+        port: tunnelInfo?.localPort ?? credentials.port,
+        database: credentials.database,
+        user: credentials.username,
+        password: credentials.password,
+        ssl: credentials.ssl ? { rejectUnauthorized: false } : false,
+        max: 1,
+        connectionTimeoutMillis: 5000,
+      });
+
+      try {
+        const client = await pool.connect();
+        await client.query('SELECT 1');
+        client.release();
+        await pool.end();
+        return { success: true, hostKeyFingerprint: tunnelInfo?.hostKeyFingerprint };
+      } catch (error: any) {
+        await pool.end().catch(() => {});
+        return { success: false, error: error.message };
+      }
     } catch (error: any) {
-      await pool.end().catch(() => {});
+      // SSH tunnel establishment itself failed
       return { success: false, error: error.message };
+    } finally {
+      // Release the tunnel reference used for testing
+      if (tunnelKey) {
+        await this.sshTunnelService.releaseTunnel(tunnelKey).catch(() => {});
+      }
     }
   }
 
   async extractSchema(credentials: ConnectionCredentials): Promise<string> {
-    const pool = this.getOrCreatePool(credentials);
+    const pool = await this.getOrCreatePool(credentials);
 
     const columnsResult = await pool.query(`
       SELECT
@@ -149,18 +189,33 @@ export class DynamicConnectionService implements OnModuleDestroy {
     return ddlParts.join('\n\n');
   }
 
-  private getOrCreatePool(credentials: ConnectionCredentials): Pool {
-    const key = `${credentials.host}:${credentials.port}:${credentials.database}:${credentials.username}`;
-    const existing = this.pools.get(key);
+  private async getOrCreatePool(credentials: ConnectionCredentials): Promise<Pool> {
+    const key = credentials.sshEnabled
+      ? `ssh:${credentials.sshHost}:${credentials.sshPort}:${credentials.sshUsername}→${credentials.host}:${credentials.port}:${credentials.database}:${credentials.username}`
+      : `${credentials.host}:${credentials.port}:${credentials.database}:${credentials.username}`;
 
+    const existing = this.pools.get(key);
     if (existing) {
       existing.lastUsed = Date.now();
       return existing.pool;
     }
 
+    let host = credentials.host;
+    let port = credentials.port;
+    let tunnelKey: string | undefined;
+
+    // If SSH is enabled, establish a tunnel and connect pg through it
+    if (credentials.sshEnabled) {
+      const tunnelConfig = this.buildSshTunnelConfig(credentials);
+      tunnelKey = `${tunnelConfig.sshHost}:${tunnelConfig.sshPort}:${tunnelConfig.sshUsername}:${tunnelConfig.targetHost}:${tunnelConfig.targetPort}`;
+      const tunnelInfo = await this.sshTunnelService.getOrCreateTunnel(tunnelConfig);
+      host = tunnelInfo.localHost;
+      port = tunnelInfo.localPort;
+    }
+
     const pool = new Pool({
-      host: credentials.host,
-      port: credentials.port,
+      host,
+      port,
       database: credentials.database,
       user: credentials.username,
       password: credentials.password,
@@ -174,8 +229,25 @@ export class DynamicConnectionService implements OnModuleDestroy {
       this.logger.error({ err, key }, 'pool error');
     });
 
-    this.pools.set(key, { pool, lastUsed: Date.now() });
+    this.pools.set(key, { pool, lastUsed: Date.now(), tunnelKey });
     return pool;
+  }
+
+  /**
+   * Build an SshTunnelConfig from ConnectionCredentials.
+   */
+  private buildSshTunnelConfig(credentials: ConnectionCredentials): SshTunnelConfig {
+    return {
+      sshHost: credentials.sshHost!,
+      sshPort: credentials.sshPort!,
+      sshUsername: credentials.sshUsername!,
+      sshAuthMethod: credentials.sshAuthMethod!,
+      sshPassword: credentials.sshPassword,
+      sshPrivateKey: credentials.sshPrivateKey,
+      sshHostKeyFingerprint: credentials.sshHostKeyFingerprint,
+      targetHost: credentials.host,
+      targetPort: credentials.port,
+    };
   }
 
   private evictIdle() {
@@ -183,8 +255,25 @@ export class DynamicConnectionService implements OnModuleDestroy {
     for (const [key, entry] of this.pools) {
       if (now - entry.lastUsed > this.IDLE_TIMEOUT_MS) {
         entry.pool.end().catch(() => {});
+        if (entry.tunnelKey) {
+          this.sshTunnelService.releaseTunnel(entry.tunnelKey).catch(() => {});
+        }
         this.pools.delete(key);
-        this.logger.info({ key }, 'evicted idle pool');
+        this.logger.info({ key, tunnelKey: entry.tunnelKey }, 'evicted idle pool');
+      }
+    }
+  }
+
+  /**
+   * Remove all pools that reference the given tunnel key.
+   * Called when a tunnel drops unexpectedly so stale pools don't keep trying dead ports.
+   */
+  private invalidatePoolsForTunnel(tunnelKey: string): void {
+    for (const [key, entry] of this.pools) {
+      if (entry.tunnelKey === tunnelKey) {
+        this.logger.warn({ poolKey: key, tunnelKey }, 'Invalidating pool due to tunnel drop');
+        entry.pool.end().catch(() => {});
+        this.pools.delete(key);
       }
     }
   }

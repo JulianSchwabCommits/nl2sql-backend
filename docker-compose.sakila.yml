@@ -1,3 +1,44 @@
+# =============================================================================
+# Sakila Database with SSH Tunnel Access
+# =============================================================================
+#
+# This file spins up a PostgreSQL database pre-seeded with the Sakila sample
+# dataset, accessible ONLY through an SSH tunnel (no direct port exposure).
+#
+# USAGE:
+#   docker compose -f docker-compose.sakila.yml up -d
+#
+# SEEDING:
+#   The database is automatically seeded on first run using SQL files in
+#   ./sakila-init/ (mounted to /docker-entrypoint-initdb.d). If you need to
+#   re-seed, remove the volume and recreate:
+#     docker compose -f docker-compose.sakila.yml down -v
+#     docker compose -f docker-compose.sakila.yml up -d
+#
+# =============================================================================
+# CONNECTION DETAILS
+# =============================================================================
+# Host (DB)	sakila-db
+# Port (DB)	5432
+# Database	sakila
+# Username	sakila
+# Password	sakila
+# ssl NO
+# SSH Host	ssh-bastion
+# SSH Port	2222
+# SSH Username	tunnel
+# SSH Password	tunnel
+# =============================================================================
+#
+# REQUIRED FILES (share these alongside this compose file):
+#   ./sakila-init/              - SQL seed files (auto-seeds on first run)
+#   ./ssh-tunnel-keys/
+#     id_ed25519               - Private key (for key-based SSH auth)
+#     id_ed25519.pub           - Public key (mounted into bastion)
+#     sshd_config              - SSH server config (enables TCP forwarding)
+#
+# =============================================================================
+
 services:
   sakila-db:
     image: postgres:16-alpine
@@ -6,23 +47,48 @@ services:
       POSTGRES_USER: sakila
       POSTGRES_PASSWORD: sakila
       POSTGRES_DB: sakila
-    ports:
-      - '5434:5432'
     volumes:
       - sakila-db-data:/var/lib/postgresql/data
       - ./sakila-init:/docker-entrypoint-initdb.d
     networks:
-      - backend
+      - sakila-net
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U sakila -d sakila']
       interval: 5s
       timeout: 3s
       retries: 5
 
+  ssh-bastion:
+    image: linuxserver/openssh-server:latest
+    restart: unless-stopped
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Etc/UTC
+      USER_NAME: tunnel
+      USER_PASSWORD: tunnel
+      PASSWORD_ACCESS: 'true'
+      PUBLIC_KEY_FILE: /config/keys/id_ed25519.pub
+    ports:
+      - '2222:2222'
+    volumes:
+      - ssh-config:/config
+      - ./ssh-tunnel-keys/id_ed25519.pub:/config/keys/id_ed25519.pub:ro
+      - ./ssh-tunnel-keys/sshd_config:/config/sshd/sshd_config
+    networks:
+      - sakila-net
+      - backend
+    depends_on:
+      sakila-db:
+        condition: service_healthy
+
 volumes:
   sakila-db-data:
+  ssh-config:
 
 networks:
+  sakila-net:
+    driver: bridge
   backend:
     external: true
     name: nl2sql-backend_backend
