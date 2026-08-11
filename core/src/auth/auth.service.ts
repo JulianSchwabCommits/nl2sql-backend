@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  BadRequestException,
   ConflictException,
   UnauthorizedException,
   ForbiddenException,
@@ -12,7 +13,7 @@ import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import * as bcrypt from 'bcrypt';
 import coreConfig from '../config/core.config';
 import { AuthDatabaseService } from '../auth-database';
-import { RegisterDto, LoginDto } from './dto';
+import { RegisterDto, LoginDto, UpdateProfileDto, ChangePasswordDto } from './dto';
 import { NotificationService } from './notification.service';
 
 @Injectable()
@@ -163,6 +164,51 @@ export class AuthService {
         createdAt: true,
       },
     });
+  }
+
+  async updateProfile(userId: number, dto: UpdateProfileDto) {
+    if (dto.email) {
+      const existing = await this.db.user.findUnique({
+        where: { email: dto.email },
+      });
+      if (existing && existing.id !== userId) {
+        throw new ConflictException('Email already in use');
+      }
+    }
+
+    const data: Record<string, unknown> = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.email !== undefined) data.email = dto.email;
+
+    await this.db.user.update({ where: { id: userId }, data });
+
+    this.logger.info(
+      { event: 'auth.profile.updated', userId, fields: Object.keys(data) },
+      'user profile updated',
+    );
+
+    return this.getProfile(userId);
+  }
+
+  async changePassword(userId: number, dto: ChangePasswordDto) {
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const valid = await bcrypt.compare(dto.currentPassword, user.password);
+    if (!valid) throw new BadRequestException('Current password is incorrect');
+
+    const hashed = await bcrypt.hash(dto.newPassword, this.cfg.bcryptRounds);
+    await this.db.user.update({
+      where: { id: userId },
+      data: { password: hashed },
+    });
+
+    this.logger.info(
+      { event: 'auth.password.changed', userId },
+      'user password changed',
+    );
+
+    return { message: 'Password changed successfully' };
   }
 
   async deleteProfile(userId: number) {

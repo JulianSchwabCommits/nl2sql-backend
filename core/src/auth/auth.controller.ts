@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Delete,
   Body,
   UseGuards,
@@ -15,7 +16,7 @@ import type { ConfigType } from '@nestjs/config';
 import { Inject } from '@nestjs/common';
 import { Public } from '@nl2sql/auth';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto } from './dto';
+import { RegisterDto, LoginDto, UpdateProfileDto, ChangePasswordDto } from './dto';
 import { AuthGuard } from './guards/auth.guard';
 import { RefreshGuard } from './guards/refresh.guard';
 import coreConfig from '../config/core.config';
@@ -71,6 +72,19 @@ export class AuthController {
   @Get('profile')
   getProfile(@Req() req: any) {
     return this.authService.getProfile(req.user.sub);
+  }
+
+  @UseGuards(AuthGuard)
+  @Patch('profile')
+  updateProfile(@Req() req: any, @Body() dto: UpdateProfileDto) {
+    return this.authService.updateProfile(req.user.sub, dto);
+  }
+
+  @UseGuards(AuthGuard)
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  changePassword(@Req() req: any, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(req.user.sub, dto);
   }
 
   @UseGuards(AuthGuard)

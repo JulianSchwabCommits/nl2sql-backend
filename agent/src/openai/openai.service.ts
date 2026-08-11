@@ -121,6 +121,7 @@ export interface LlmRequestConfig {
   apiKey: string;
   model: string;
   provider: string;
+  systemPrompt?: string;
 }
 
 @Injectable()
@@ -172,7 +173,7 @@ export class OpenAIService {
         'No API key configured. Please add your API key in Settings.',
       );
     }
-    const systemPrompt = this.getSystemPrompt();
+    const systemPrompt = llmConfig.systemPrompt || this.getSystemPrompt();
     const openaiMessages = this.buildMessages(messages, systemPrompt);
     const baseUrl = this.getBaseUrl(llmConfig.provider);
     try {

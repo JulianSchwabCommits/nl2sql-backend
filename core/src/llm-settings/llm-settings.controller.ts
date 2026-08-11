@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Put,
+  Post,
   Delete,
   Body,
   Req,
@@ -33,5 +34,32 @@ export class LlmSettingsController {
   async delete(@Req() req: Request) {
     const userId = req['user'].sub;
     await this.llmSettings.delete(userId);
+  }
+
+  @Get('system-prompt')
+  async getSystemPrompt(@Req() req: Request) {
+    const userId = req['user'].sub;
+    return this.llmSettings.getSystemPrompt(userId);
+  }
+
+  @Put('system-prompt')
+  async updateSystemPrompt(
+    @Req() req: Request,
+    @Body('systemPrompt') systemPrompt: string,
+  ) {
+    const userId = req['user'].sub;
+    return this.llmSettings.updateSystemPrompt(userId, systemPrompt);
+  }
+
+  @Post('system-prompt/reset')
+  async resetSystemPrompt(@Req() req: Request) {
+    const userId = req['user'].sub;
+    return this.llmSettings.resetSystemPrompt(userId);
+  }
+
+  @Get('models')
+  async getModels(@Req() req: Request) {
+    const userId = req['user'].sub;
+    return this.llmSettings.getModels(userId);
   }
 }

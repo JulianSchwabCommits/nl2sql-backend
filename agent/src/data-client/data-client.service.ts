@@ -57,6 +57,7 @@ export interface LlmSettings {
   provider: string;
   model: string;
   apiKey: string;
+  systemPrompt?: string;
 }
 
 @Injectable()

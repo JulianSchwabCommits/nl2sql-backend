@@ -109,6 +109,7 @@ export class AgentService {
       apiKey: llmSettings.apiKey,
       model: llmSettings.model,
       provider: llmSettings.provider,
+      systemPrompt: llmSettings.systemPrompt,
     };
 
     const trimmedHistory = history.slice(-this.cfg.maxHistoryMessages);
