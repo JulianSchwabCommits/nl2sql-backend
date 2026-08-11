@@ -4,6 +4,7 @@ import {
   Post,
   Delete,
   Patch,
+  Put,
   Query,
   Body,
   Param,
@@ -25,6 +26,7 @@ import * as bcrypt from 'bcrypt';
 import { Public } from '@nl2sql/auth';
 import coreConfig, { MIN_PASSWORD_LENGTH } from '../config/core.config';
 import { AuthDatabaseService } from '../auth-database';
+import { AppDefaultsService, APP_DEFAULT_KEYS, ORIGINAL_DEFAULTS } from '../app-defaults';
 import type { Request, Response } from 'express';
 
 @Controller('admin')
@@ -33,6 +35,7 @@ export class AdminController {
     private readonly db: AuthDatabaseService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly appDefaults: AppDefaultsService,
     @Inject(coreConfig.KEY)
     private readonly cfg: ConfigType<typeof coreConfig>,
     @InjectPinoLogger(AdminController.name) private readonly logger: PinoLogger,
@@ -416,6 +419,76 @@ export class AdminController {
     );
 
     return { message: 'User password reset successfully' };
+  }
+
+  // Defaults
+
+  @Public()
+  @Get('defaults')
+  async getAllDefaults(@Req() req: Request) {
+    await this.requireAdmin(req);
+    return this.appDefaults.getAll();
+  }
+
+  @Public()
+  @Get('defaults/:key')
+  async getDefault(@Param('key') key: string, @Req() req: Request) {
+    await this.requireAdmin(req);
+    const value = await this.appDefaults.get(key);
+    return { key, value };
+  }
+
+  @Public()
+  @Put('defaults/:key')
+  async setDefault(
+    @Param('key') key: string,
+    @Body('value') value: string,
+    @Req() req: Request,
+  ) {
+    await this.requireAdmin(req);
+    if (!value || typeof value !== 'string') {
+      throw new BadRequestException('Value is required');
+    }
+    await this.appDefaults.set(key, value);
+
+    // If updating system prompt default, cascade to all users using default
+    if (key === APP_DEFAULT_KEYS.SYSTEM_PROMPT) {
+      const result = await this.db.llmSettings.updateMany({
+        where: { useDefaultPrompt: true },
+        data: { systemPrompt: null },
+      });
+      this.logger.info(
+        { event: 'admin.defaults.cascade', key, usersUpdated: result.count },
+        'cascaded default system prompt update',
+      );
+    }
+
+    return { key, value };
+  }
+
+  @Public()
+  @Post('defaults/:key/restore')
+  @HttpCode(HttpStatus.OK)
+  async restoreDefault(@Param('key') key: string, @Req() req: Request) {
+    await this.requireAdmin(req);
+
+    if (key === APP_DEFAULT_KEYS.SYSTEM_PROMPT) {
+      const originalPrompt = ORIGINAL_DEFAULTS[APP_DEFAULT_KEYS.SYSTEM_PROMPT];
+      if (!originalPrompt) {
+        throw new NotFoundException('No original default found for this key');
+      }
+      await this.appDefaults.set(key, originalPrompt);
+
+      // Cascade: clear custom prompts for users on default
+      await this.db.llmSettings.updateMany({
+        where: { useDefaultPrompt: true },
+        data: { systemPrompt: null },
+      });
+
+      return { key, value: originalPrompt, restored: true };
+    }
+
+    throw new BadRequestException(`No restore source for key: ${key}`);
   }
 
   // Helper

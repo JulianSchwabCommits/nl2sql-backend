@@ -97,9 +97,9 @@ export class AgentService {
     onToolCall?: OnToolCall,
   ): Promise<AgentResult> {
     const llmSettings = await this.dataClient.getUserLlmSettings(userId);
-    if (!llmSettings || !llmSettings.apiKey) {
+    if (!llmSettings || !llmSettings.apiKey || !llmSettings.model) {
       return {
-        reply: 'Please configure your LLM API key in Settings before using the chat.',
+        reply: 'Please configure your LLM API key and model in **Settings → LLM** before using the chat.',
         queries: [],
         error: 'no_llm_settings',
       };

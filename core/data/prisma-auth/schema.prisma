@@ -35,10 +35,18 @@ model LlmSettings {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   provider  String   @default("openai")
   model     String   @default("gpt-4o-mini")
-  apiKey       String
-  systemPrompt String?
+  apiKey           String
+  systemPrompt     String?
+  useDefaultPrompt Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model AppDefault {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model DatabaseConnection {

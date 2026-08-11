@@ -3,31 +3,21 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { AuthDatabaseService } from '../auth-database';
 import { CryptoService } from '../crypto';
+import { AppDefaultsService, APP_DEFAULT_KEYS } from '../app-defaults';
 import { UpsertLlmSettingsDto } from './dto';
 
 @Injectable()
 export class LlmSettingsService {
-  private defaultSystemPrompt: string;
+  private static readonly FALLBACK_PROMPT =
+    'You are an expert SQL assistant. Help users write and understand SQL queries.';
 
   constructor(
     private readonly db: AuthDatabaseService,
     private readonly crypto: CryptoService,
-  ) {
-    // Load default system prompt from agent's data file
-    try {
-      this.defaultSystemPrompt = readFileSync(
-        join(__dirname, '..', '..', '..', 'agent', 'data', 'system-prompt.txt'),
-        'utf-8',
-      ).trim();
-    } catch {
-      this.defaultSystemPrompt =
-        'You are an expert SQL assistant. Help users write and understand SQL queries.';
-    }
-  }
+    private readonly appDefaults: AppDefaultsService,
+  ) {}
 
   async getForUser(userId: number) {
     const settings = await this.db.llmSettings.findUnique({
@@ -120,22 +110,31 @@ export class LlmSettingsService {
       provider: settings.provider,
       model: settings.model,
       apiKey: this.crypto.decrypt(settings.apiKey),
-      systemPrompt: settings.systemPrompt ?? this.defaultSystemPrompt,
+      systemPrompt: settings.systemPrompt ?? await this.getDefaultPrompt(),
     };
   }
 
-  getDefaultSystemPrompt(): string {
-    return this.defaultSystemPrompt;
+  private async getDefaultPrompt(): Promise<string> {
+    return (
+      (await this.appDefaults.get(APP_DEFAULT_KEYS.SYSTEM_PROMPT)) ??
+      LlmSettingsService.FALLBACK_PROMPT
+    );
+  }
+
+  async getDefaultSystemPrompt(): Promise<string> {
+    return this.getDefaultPrompt();
   }
 
   async getSystemPrompt(userId: number) {
     const settings = await this.db.llmSettings.findUnique({
       where: { userId },
-      select: { systemPrompt: true },
+      select: { systemPrompt: true, useDefaultPrompt: true },
     });
+    const defaultPrompt = await this.getDefaultPrompt();
     return {
-      systemPrompt: settings?.systemPrompt ?? this.defaultSystemPrompt,
+      systemPrompt: settings?.systemPrompt ?? defaultPrompt,
       isCustom: !!settings?.systemPrompt,
+      isDefault: settings?.useDefaultPrompt ?? true,
     };
   }
 
@@ -150,9 +149,9 @@ export class LlmSettingsService {
     }
     await this.db.llmSettings.update({
       where: { userId },
-      data: { systemPrompt },
+      data: { systemPrompt, useDefaultPrompt: false },
     });
-    return { systemPrompt, isCustom: true };
+    return { systemPrompt, isCustom: true, isDefault: false };
   }
 
   async resetSystemPrompt(userId: number) {
@@ -164,9 +163,9 @@ export class LlmSettingsService {
     }
     await this.db.llmSettings.update({
       where: { userId },
-      data: { systemPrompt: null },
+      data: { systemPrompt: null, useDefaultPrompt: true },
     });
-    return { systemPrompt: this.defaultSystemPrompt, isCustom: false };
+    return { systemPrompt: await this.getDefaultPrompt(), isCustom: false, isDefault: true };
   }
 
   async getModels(userId: number) {

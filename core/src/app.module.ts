@@ -15,6 +15,7 @@ import { InternalModule } from './internal/internal.module';
 import { CryptoModule } from './crypto';
 import { ConnectionsModule } from './connections';
 import { LlmSettingsModule } from './llm-settings';
+import { AppDefaultsModule } from './app-defaults';
 
 
 const REQUIRED_ENV = [
@@ -61,6 +62,7 @@ const REQUIRED_ENV = [
     CryptoModule,
     ConnectionsModule,
     LlmSettingsModule,
+    AppDefaultsModule,
     AuthModule,
     AdminModule,
     InternalModule,
